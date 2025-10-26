@@ -252,7 +252,7 @@ async def websocket_ingest(websocket: WebSocket):
                     buffer_data = audio_buffer.get_audio_data()
                     
                     # Проверяем что данных достаточно
-                    if len(buffer_data) < 80000:
+                    if len(buffer_data) < audio_buffer.min_buffer_size: # Use min_buffer_size from AudioBuffer
                         print(f"⚠️ Buffer too small: {len(buffer_data)} bytes, skipping")
                         audio_buffer.clear()
                         continue
@@ -270,6 +270,10 @@ async def websocket_ingest(websocket: WebSocket):
                         buffer_data,
                         transcription_language  # Используем глобальный язык
                     )
+                    
+                    # Initialize variables BEFORE processing
+                    next_step = "Listen and understand client needs"
+                    assist_trigger = None
                     
                     if transcript:
                         system_status.transcription_count += 1
@@ -537,7 +541,6 @@ async def websocket_ingest(websocket: WebSocket):
                         print("⏳ Transcript empty, using cached data")
                     
                     # ===== DETECT IN-CALL TRIGGERS =====
-                    assist_trigger = None
                     if transcript and len(transcript) > 10:
                         # Use recent transcript for trigger detection
                         assist_trigger = intent_detector.detect_trigger(transcript, transcription_language)
