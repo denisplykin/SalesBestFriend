@@ -16,9 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend code
 COPY backend/ ./backend/
 
+# Change to backend directory
+WORKDIR /app/backend
+
 # Expose port (Railway will set $PORT)
 EXPOSE 8000
 
 # Start command
-CMD cd backend && uvicorn main_trial_class:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["sh", "-c", "uvicorn main_trial_class:app --host 0.0.0.0 --port ${PORT:-8000}"]
 
