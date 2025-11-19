@@ -64,6 +64,9 @@ class IntentDetector:
         best_match = None
         best_priority = -1
         
+        print(f"\n   🔎 Intent Detector: checking {len(self.playbook)} triggers")
+        print(f"      Text: '{transcript_lower[:80]}'")
+        
         # Check each trigger in playbook
         for trigger in self.playbook:
             trigger_id = trigger.get("id")
@@ -72,18 +75,28 @@ class IntentDetector:
             
             # Check if any keyword matches
             for keyword in match_keywords:
-                if keyword.lower() in transcript_lower:
-                    # Use case-insensitive but exact word boundary match
-                    pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
-                    if re.search(pattern, transcript_lower):
-                        # Found a match
-                        if priority > best_priority:
-                            best_priority = priority
-                            best_match = trigger
-                        print(f"   ✅ Matched '{keyword}' → {trigger_id} (priority {priority})")
-                        break
+                keyword_lower = keyword.lower()
+                if keyword_lower in transcript_lower:
+                    # For Cyrillic, word boundaries (\b) don't work, so use simple substring match
+                    # For ASCII, use word boundary for precision
+                    if keyword.isascii():
+                        pattern = r'\b' + re.escape(keyword_lower) + r'\b'
+                        if not re.search(pattern, transcript_lower):
+                            continue  # ASCII keyword needs word boundary
+                    
+                    # Found a match
+                    print(f"      ✅ MATCH: '{keyword}' in '{trigger_id}' (priority {priority})")
+                    if priority > best_priority:
+                        best_priority = priority
+                        best_match = trigger
+                    break
+                else:
+                    # Substring check failed, but for debugging only show for first few triggers
+                    if trigger_id == "price_objection":  # Debug only for price trigger
+                        print(f"      ❌ No '{keyword}' in text")
         
         if not best_match:
+            print(f"      ❌ No triggers matched")
             return None
         
         # Anti-spam: don't repeat same trigger within cooldown

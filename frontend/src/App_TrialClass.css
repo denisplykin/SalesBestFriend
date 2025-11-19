@@ -1,0 +1,221 @@
+/**
+ * Trial Class App - Minimal Design
+ * 
+ * Design Principles:
+ * - Plenty of whitespace
+ * - Clear hierarchy
+ * - Subtle colors
+ * - Unobtrusive for screen sharing
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+.trial-class-app {
+  min-height: 100vh;
+  background: #f9fafb;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  color: #111827;
+}
+
+/* ===== TOP BAR ===== */
+
+.top-bar {
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app-title h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  color: #111827;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.top-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.btn-primary,
+.btn-danger,
+.btn-settings,
+.btn-debug {
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background: #10b981;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #059669;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-settings,
+.btn-debug {
+  background: #f3f4f6;
+  color: #6b7280;
+  padding: 0.625rem;
+  font-size: 1.125rem;
+}
+
+.btn-settings:hover,
+.btn-debug:hover {
+  background: #e5e7eb;
+}
+
+.btn-debug {
+  position: relative;
+}
+
+.btn-debug::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background: #f59e0b;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+/* ===== MAIN CONTENT ===== */
+
+.main-content {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 1.5rem;
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.left-panel {
+  min-height: 600px;
+}
+
+.right-panel {
+  min-height: 600px;
+}
+
+/* ===== INSTRUCTIONS OVERLAY ===== */
+
+.instructions-overlay {
+  position: fixed;
+  top: 80px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(249, 250, 251, 0.95);
+  z-index: 100;
+}
+
+.instructions-content {
+  background: white;
+  border-radius: 12px;
+  padding: 2.5rem;
+  max-width: 500px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.instructions-content h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 1.5rem 0;
+  color: #111827;
+}
+
+.instructions-content ol {
+  margin: 0 0 1.5rem 0;
+  padding-left: 1.5rem;
+  line-height: 1.8;
+  color: #374151;
+}
+
+.instructions-content ol li {
+  margin: 0.5rem 0;
+}
+
+.instructions-content .note {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+/* ===== RESPONSIVE ===== */
+
+@media (max-width: 1280px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .right-panel {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-bar {
+    padding: 1rem;
+  }
+  
+  .app-title h1 {
+    font-size: 1rem;
+  }
+  
+  .main-content {
+    padding: 1rem;
+    gap: 1rem;
+  }
+  
+  .btn-primary,
+  .btn-danger {
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+  }
+}
+

@@ -18,6 +18,7 @@ from utils.realtime_transcriber import transcribe_audio_buffer
 from utils.llm_analyzer import get_llm_analyzer
 from utils.intent_detector import get_intent_detector
 from sales_checklist import (
+    SALES_CHECKLIST,
     detect_stage_from_text,
     check_checklist_item,
     generate_next_step_recommendation,
@@ -207,9 +208,13 @@ async def websocket_ingest(websocket: WebSocket):
     print("🔄 Checklist reset for new live recording")
     
     # Создаем буфер для накопления аудио
-    audio_buffer = AudioBuffer(interval_seconds=5.0)  # Транскрибируем каждые 5 секунд (быстрее!)
+    audio_buffer = AudioBuffer(interval_seconds=10.0)  # Транскрибируем каждые 10 секунд (экономия!)
     last_orchestrate = 0.0
     ready_for_transcription = False
+    
+    # Initialize these variables OUTSIDE the loop to avoid UnboundLocalError
+    next_step = "Listen and understand client needs"
+    assist_trigger = None
     
     print(f"🎧 Audio buffer initialized: transcribing every {audio_buffer.interval_seconds}s")
     
@@ -251,12 +256,6 @@ async def websocket_ingest(websocket: WebSocket):
                     # Получаем аудио данные
                     buffer_data = audio_buffer.get_audio_data()
                     
-                    # Проверяем что данных достаточно
-                    if len(buffer_data) < audio_buffer.min_buffer_size: # Use min_buffer_size from AudioBuffer
-                        print(f"⚠️ Buffer too small: {len(buffer_data)} bytes, skipping")
-                        audio_buffer.clear()
-                        continue
-                    
                     print(f"🎯 Starting transcription: {len(buffer_data)} bytes")
                     
                     # Запускаем транскрипцию асинхронно чтобы не блокировать WebSocket
@@ -271,7 +270,7 @@ async def websocket_ingest(websocket: WebSocket):
                         transcription_language  # Используем глобальный язык
                     )
                     
-                    # Initialize variables BEFORE processing
+                    # Reset variables for this iteration (already initialized outside loop)
                     next_step = "Listen and understand client needs"
                     assist_trigger = None
                     
@@ -291,8 +290,7 @@ async def websocket_ingest(websocket: WebSocket):
                         if len(words) > 500:
                             accumulated_transcript = " ".join(words[-500:])
                         
-                        # Initialize variables for this iteration
-                        next_step = "Listen and understand client needs"
+                        # Use LLM analysis flag
                         local_use_llm = use_llm_analysis  # Local copy of global flag
                         
                         # === SPEAKER DIARIZATION (LLM-based) ===
@@ -668,13 +666,16 @@ async def health():
 
 
 @app.post("/api/process-transcript")
-async def process_transcript(transcript: str = Form(...)):
+async def process_transcript(transcript: str = Form(...), language: str = Form("id")):
     """
     Обработка текстового транскрипта для отладки
     """
-    global last_client_insight, last_hint, last_prob
+    global last_client_insight, last_hint, last_prob, accumulated_transcript, current_stage, checklist_progress, checklist_evidence, checklist_completion_cache
     
     try:
+        # Накапливаем транскрипцию для контекста
+        accumulated_transcript = transcript
+        
         # Разбиваем транскрипт на строки
         lines = transcript.strip().split('\n')
         
@@ -717,18 +718,94 @@ async def process_transcript(transcript: str = Form(...)):
         last_hint = result.get("hint", "")
         last_prob = result.get("prob", 0.0)
         
+        # ===== UPDATE CHECKLIST (LLM-based semantic matching) =====
+        print(f"\n📋 Checking checklist (LLM=True, language={language})...")
+        current_stage = detect_stage_from_text(accumulated_transcript)
+        
+        # Check checklist items using LLM semantic matching
+        for stage, stage_data in SALES_CHECKLIST.items():
+            for item in stage_data['items']:
+                item_id = item['id']
+                
+                # Skip if already completed
+                if checklist_progress.get(item_id, False):
+                    continue
+                
+                # Skip if checked recently (within 30 seconds)
+                if item_id in checklist_completion_cache:
+                    if time.time() - checklist_completion_cache[item_id] < 30:
+                        continue
+                
+                # Mark as checked
+                checklist_completion_cache[item_id] = time.time()
+                
+                # Use accumulated_transcript (both client + sales) for checking
+                check_text = accumulated_transcript[-2000:]  # Last 2000 chars
+                
+                # Always use LLM for semantic checking
+                try:
+                    completed, reason = llm_analyzer.check_checklist_item_semantic(
+                        item['text'],
+                        check_text,
+                        language  # Use the language from form parameter
+                    )
+                    
+                    if completed:
+                        checklist_progress[item_id] = True
+                        # Extract evidence (last 2 sentences)
+                        sentences = check_text.split('. ')
+                        evidence = '. '.join(sentences[-2:]) if len(sentences) >= 2 else check_text
+                        checklist_evidence[item_id] = evidence[:200]  # Limit to 200 chars
+                        print(f"   ✅ {item_id}: {item['text']}")
+                        print(f"      Evidence: {evidence[:100]}...")
+                except Exception as e:
+                    print(f"   ⚠️ Error checking {item_id}: {e}")
+        
+        # Generate next step recommendation
+        next_step = llm_analyzer.generate_next_step(
+            current_stage,
+            last_client_insight,
+            checklist_progress,
+            accumulated_transcript[-500:]
+        )
+        
+        # ===== DETECT IN-CALL TRIGGERS =====
+        print(f"\n🔍 TRIGGER DETECTION:")
+        print(f"   Transcript: '{transcript[:100]}'")
+        print(f"   Length: {len(transcript)}")
+        print(f"   Language: {language}")
+        assist_trigger = None
+        if transcript and len(transcript) > 5:
+            print(f"   ✅ Transcript valid, calling detect_trigger...")
+            assist_trigger = intent_detector.detect_trigger(transcript, language)
+            print(f"   Result: {assist_trigger}")
+            if assist_trigger:
+                print(f"🎯 TRIGGER DETECTED: {assist_trigger.get('id')} - {assist_trigger.get('title')}")
+            else:
+                print(f"   ⚠️ No trigger matched")
+        else:
+            print(f"   ❌ Transcript too short or empty")
+        
         # Отправляем всем подключенным клиентам
         message_data = {
             "hint": last_hint,
             "prob": last_prob,
-            "client_insight": last_client_insight
+            "client_insight": last_client_insight,
+            "next_step": next_step,
+            "current_stage": current_stage,
+            "checklist_progress": checklist_progress,
+            "checklist_evidence": checklist_evidence,
+            "transcript_preview": accumulated_transcript[-500:] if accumulated_transcript else "",
+            "assist_trigger": assist_trigger  # Include trigger for frontend
         }
         message = json.dumps(message_data)
         
+        print(f"📡 Sending to {len(coach_connections)} WebSocket clients...")
         disconnected = set()
         for ws in coach_connections:
             try:
                 await ws.send_text(message)
+                print(f"   ✅ Sent to client")
             except Exception as e:
                 print(f"❌ Ошибка отправки: {e}")
                 disconnected.add(ws)
@@ -743,11 +820,18 @@ async def process_transcript(transcript: str = Form(...)):
             "message": f"Обработано {len(client_utterances)} высказываний",
             "client_insight": last_client_insight,
             "hint": last_hint,
-            "prob": last_prob
+            "prob": last_prob,
+            "next_step": next_step,
+            "current_stage": current_stage,
+            "checklist_progress": checklist_progress,
+            "checklist_evidence": checklist_evidence,
+            "assist_trigger": assist_trigger
         })
         
     except Exception as e:
         print(f"❌ Ошибка обработки transcript: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse({
             "success": False,
             "error": str(e)
@@ -870,6 +954,13 @@ async def process_video(file: UploadFile = File(...), language: str = Form("id")
             last_hint = llm_result.get("hint", "")
             last_prob = llm_result.get("prob", 0.0)
             
+            # ===== DETECT IN-CALL TRIGGERS =====
+            assist_trigger = None
+            if transcript and len(transcript) > 5:
+                assist_trigger = intent_detector.detect_trigger(transcript, language)
+                if assist_trigger:
+                    print(f"🎯 TRIGGER DETECTED: {assist_trigger.get('id')} - {assist_trigger.get('title')}")
+            
             return JSONResponse({
                 "success": True,
                 "transcript": transcript,
@@ -877,7 +968,8 @@ async def process_video(file: UploadFile = File(...), language: str = Form("id")
                 "client_insight": last_client_insight,
                 "hint": last_hint,
                 "prob": last_prob,
-                "language": language
+                "language": language,
+                "assist_trigger": assist_trigger
             })
         
     except Exception as e:
@@ -951,11 +1043,19 @@ async def process_youtube(url: str = Form(...), language: str = Form("id")):
         last_hint = result.get("hint", "")
         last_prob = result.get("prob", 0.0)
         
+        # ===== DETECT IN-CALL TRIGGERS =====
+        assist_trigger = None
+        if transcript and len(transcript) > 5:
+            assist_trigger = intent_detector.detect_trigger(transcript, language)
+            if assist_trigger:
+                print(f"🎯 TRIGGER DETECTED: {assist_trigger.get('id')} - {assist_trigger.get('title')}")
+        
         # Broadcast через WebSocket
         message_data = {
             "hint": last_hint,
             "prob": last_prob,
-            "client_insight": last_client_insight
+            "client_insight": last_client_insight,
+            "assist_trigger": assist_trigger  # Include trigger for frontend
         }
         message = json.dumps(message_data)
         

@@ -14,7 +14,7 @@ import asyncio
 class AudioBuffer:
     """Manages audio chunks for periodic transcription"""
     
-    def __init__(self, interval_seconds: float = 5.0):
+    def __init__(self, interval_seconds: float = 10.0):
         """
         Initialize audio buffer
         

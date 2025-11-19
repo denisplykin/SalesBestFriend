@@ -128,6 +128,11 @@ function App() {
     }
   }
 
+  // Connect WebSockets on page load (for all modes)
+  useEffect(() => {
+    connectWebSockets()
+  }, [])
+
   const connectWebSockets = () => {
     setStatus('connecting')
 
@@ -416,9 +421,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* In-Call Assist - appears on top when triggered */}
-      <InCallAssist trigger={assistTrigger} />
-      
       <header className="header">
         <h1>🎯 Sales Best Friend</h1>
         <p className="subtitle">AI Voice Coach for Sales Calls</p>
@@ -429,8 +431,12 @@ function App() {
       </header>
 
       <div className="main-container">
-        {/* Next Step Recommendation - Top */}
-        <NextStepCard coachWs={coachWsRef.current} />
+        {/* In-Call Assist or Next Step - Top */}
+        {assistTrigger ? (
+          <InCallAssist trigger={assistTrigger} />
+        ) : (
+          <NextStepCard coachWs={coachWsRef.current} />
+        )}
 
         {/* Client Information Summary */}
         <ClientInfoSummary coachWs={coachWsRef.current} />

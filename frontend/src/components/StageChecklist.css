@@ -1,0 +1,266 @@
+/**
+ * Stage Checklist - Clean Design
+ * 
+ * Shows stages with timing and progress in a minimal, readable format
+ */
+
+.stage-checklist {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.checklist-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 1.5rem 0;
+  color: #111827;
+}
+
+/* ===== STAGES CONTAINER ===== */
+
+.stages-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ===== STAGE BLOCK ===== */
+
+.stage-block {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.stage-block.current {
+  border-color: #10b981;
+  box-shadow: 0 0 0 1px #10b981;
+}
+
+/* Stage Header */
+
+.stage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background: #fafafa;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.stage-header:hover {
+  background: #f5f5f5;
+}
+
+.stage-block.current .stage-header {
+  background: #f0fdf4;
+}
+
+.stage-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+.stage-number {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5e7eb;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.stage-block.current .stage-number {
+  background: #10b981;
+  color: white;
+}
+
+.stage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stage-name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  margin: 0;
+  color: #111827;
+}
+
+.stage-time {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Timing Badge */
+
+.timing-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: white;
+}
+
+/* Progress Indicator */
+
+.progress-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progress-text {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-bar-small {
+  width: 60px;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill-small {
+  height: 100%;
+  background: #10b981;
+  transition: width 0.3s ease;
+}
+
+.expand-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: color 0.15s ease;
+}
+
+.expand-btn:hover {
+  color: #6b7280;
+}
+
+/* ===== STAGE ITEMS ===== */
+
+.stage-items {
+  padding: 0 1.25rem 1rem 1.25rem;
+  background: white;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.checklist-item:last-child {
+  border-bottom: none;
+}
+
+.checklist-item.completed {
+  opacity: 0.6;
+}
+
+/* Checkbox */
+
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkbox-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.checkbox-custom {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #d1d5db;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.checkbox-input:checked + .checkbox-custom {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.checkmark {
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Item Content */
+
+.item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.item-type-badge {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.item-text {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.item-evidence {
+  cursor: help;
+  opacity: 0.5;
+  font-size: 0.875rem;
+}
+
+/* ===== EMPTY STATE ===== */
+
+.empty-state {
+  padding: 3rem 2rem;
+  text-align: center;
+  color: #9ca3af;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+

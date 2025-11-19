@@ -1,0 +1,26 @@
+/**
+ * Call Timer - Simple, clean timer display
+ */
+
+.call-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.timer-icon {
+  font-size: 1rem;
+}
+
+.timer-value {
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+  min-width: 3.5rem;
+  text-align: center;
+}
+
