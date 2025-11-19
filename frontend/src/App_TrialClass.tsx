@@ -274,19 +274,8 @@ function App_TrialClass() {
     }
   }
 
-  const handleClientCardUpdate = (fieldId: string, value: string) => {
-    // Optimistic update
-    setClientCard(prev => ({ ...prev, [fieldId]: value }))
-    
-    // Send to backend
-    if (coachWsRef.current?.readyState === WebSocket.OPEN) {
-      coachWsRef.current.send(JSON.stringify({
-        type: 'update_client_card',
-        field_id: fieldId,
-        value: value
-      }))
-    }
-  }
+  // Client card is now automatically filled by AI (read-only)
+  // No manual update handler needed
 
   const getStatusColor = () => {
     switch (status) {
@@ -353,7 +342,6 @@ function App_TrialClass() {
         <div className="right-panel">
           <ClientCard
             data={clientCard}
-            onUpdate={handleClientCardUpdate}
           />
         </div>
       </div>

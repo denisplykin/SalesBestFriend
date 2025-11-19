@@ -79,52 +79,54 @@
 }
 
 .field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.8125rem;
   font-weight: 500;
   color: #6b7280;
 }
 
-.field-input {
-  width: 100%;
+/* AI Indicator */
+
+.ai-indicator {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-left: auto;
+}
+
+/* Field Value (Read-only display) */
+
+.field-value {
   padding: 0.625rem 0.875rem;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   font-size: 0.875rem;
   line-height: 1.5;
   color: #111827;
-  background: white;
-  transition: all 0.15s ease;
-  font-family: inherit;
-  resize: vertical;
-}
-
-.field-input:focus {
-  outline: none;
-  border-color: #10b981;
-  box-shadow: 0 0 0 1px #10b981;
-}
-
-.field-input::placeholder {
-  color: #9ca3af;
-}
-
-.field-wrapper.empty .field-input {
   background: #fafafa;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.field-wrapper.filled .field-input {
-  background: white;
-  border-color: #10b981;
+.field-value.multiline {
+  min-height: 4.5rem;
+  align-items: flex-start;
+  padding-top: 0.75rem;
 }
 
-/* AI Indicator */
+.field-wrapper.filled .field-value {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #111827;
+}
 
-.ai-indicator {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  font-size: 0.75rem;
-  opacity: 0.6;
+.placeholder-text {
+  color: #9ca3af;
+  font-style: italic;
 }
 
 /* ===== EMPTY STATE ===== */

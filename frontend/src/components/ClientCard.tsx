@@ -2,17 +2,15 @@
  * Client Card Component
  * 
  * Structured fields for tracking client information.
- * - Auto-filled by AI
- * - Manually editable
+ * - Auto-filled by AI (read-only)
  * - Organized by category
+ * - Updates in real-time during conversation
  */
 
-import { useState } from 'react'
 import './ClientCard.css'
 
 interface ClientCardProps {
   data: Record<string, string>
-  onUpdate: (fieldId: string, value: string) => void
 }
 
 // Field definitions (should match backend config)
@@ -102,9 +100,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   notes: '📝 Notes'
 }
 
-export default function ClientCard({ data, onUpdate }: ClientCardProps) {
-  const [editingField, setEditingField] = useState<string | null>(null)
-
+export default function ClientCard({ data }: ClientCardProps) {
   const fieldsByCategory = CLIENT_CARD_FIELDS.reduce((acc, field) => {
     if (!acc[field.category]) {
       acc[field.category] = []
@@ -112,13 +108,6 @@ export default function ClientCard({ data, onUpdate }: ClientCardProps) {
     acc[field.category].push(field)
     return acc
   }, {} as Record<string, typeof CLIENT_CARD_FIELDS>)
-
-  const handleBlur = (fieldId: string, value: string) => {
-    setEditingField(null)
-    if (value !== data[fieldId]) {
-      onUpdate(fieldId, value)
-    }
-  }
 
   const getFilledFieldCount = () => {
     return Object.values(data).filter(v => v && v.trim().length > 0).length
@@ -141,7 +130,6 @@ export default function ClientCard({ data, onUpdate }: ClientCardProps) {
             <div className="fields-list">
               {fields.map(field => {
                 const value = data[field.id] || ''
-                const isEditing = editingField === field.id
                 const isEmpty = !value || value.trim().length === 0
 
                 return (
@@ -149,33 +137,18 @@ export default function ClientCard({ data, onUpdate }: ClientCardProps) {
                     key={field.id}
                     className={`field-wrapper ${isEmpty ? 'empty' : 'filled'}`}
                   >
-                    <label className="field-label">{field.label}</label>
+                    <label className="field-label">
+                      {field.label}
+                      {!isEmpty && <span className="ai-indicator" title="AI extracted">🤖</span>}
+                    </label>
                     
-                    {field.multiline ? (
-                      <textarea
-                        className="field-input"
-                        value={value}
-                        onChange={(e) => onUpdate(field.id, e.target.value)}
-                        onFocus={() => setEditingField(field.id)}
-                        onBlur={(e) => handleBlur(field.id, e.target.value)}
-                        placeholder={`Enter ${field.label.toLowerCase()}...`}
-                        rows={3}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={value}
-                        onChange={(e) => onUpdate(field.id, e.target.value)}
-                        onFocus={() => setEditingField(field.id)}
-                        onBlur={(e) => handleBlur(field.id, e.target.value)}
-                        placeholder={`Enter ${field.label.toLowerCase()}...`}
-                      />
-                    )}
-                    
-                    {!isEmpty && !isEditing && (
-                      <span className="ai-indicator" title="AI extracted">🤖</span>
-                    )}
+                    <div className={`field-value ${field.multiline ? 'multiline' : ''}`}>
+                      {isEmpty ? (
+                        <span className="placeholder-text">Listening...</span>
+                      ) : (
+                        value
+                      )}
+                    </div>
                   </div>
                 )
               })}
