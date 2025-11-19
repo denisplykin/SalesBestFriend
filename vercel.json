@@ -6,8 +6,8 @@
   "devCommand": "cd frontend && npm run dev",
   "installCommand": "cd frontend && npm install",
   "env": {
-    "VITE_API_WS": "wss://your-backend-url.com",
-    "VITE_API_HTTP": "https://your-backend-url.com"
+    "VITE_API_WS": "wss://salesbestfriend-production.up.railway.app",
+    "VITE_API_HTTP": "https://salesbestfriend-production.up.railway.app"
   },
   "build": {
     "env": {
