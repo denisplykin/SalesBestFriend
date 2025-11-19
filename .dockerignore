@@ -1,0 +1,13 @@
+frontend/
+node_modules/
+__pycache__/
+*.pyc
+.git/
+.vscode/
+.DS_Store
+*.md
+*.sh
+.env
+.env.local
+*.log
+
