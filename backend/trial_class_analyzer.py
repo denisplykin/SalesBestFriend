@@ -234,6 +234,99 @@ If no clear information, return empty object: {{}}
         
         return results
     
+    def detect_current_stage(
+        self,
+        conversation_text: str,
+        stages: List[Dict],
+        call_elapsed_seconds: int
+    ) -> Tuple[str, float]:
+        """
+        Detect which stage the conversation is currently in based on context
+        
+        Args:
+            conversation_text: Recent conversation (last ~2000 chars)
+            stages: List of stage definitions with names and items
+            call_elapsed_seconds: Time elapsed (used as context, not decision)
+            
+        Returns:
+            (stage_id: str, confidence: float)
+        """
+        # Guard: Skip if conversation too short
+        if len(conversation_text.strip()) < 100:
+            # At start, assume first stage
+            return stages[0]['id'] if stages else '', 0.5
+        
+        # Build stage descriptions for LLM
+        stage_descriptions = []
+        for i, stage in enumerate(stages):
+            items_summary = []
+            for item in stage['items'][:3]:  # First 3 items as examples
+                items_summary.append(f"- {item['content']}")
+            items_text = "\n".join(items_summary)
+            if len(stage['items']) > 3:
+                items_text += f"\n- ...and {len(stage['items']) - 3} more"
+            
+            recommended_time = f"{stage['startOffsetSeconds']//60}-{(stage['startOffsetSeconds'] + stage['durationSeconds'])//60} min"
+            
+            stage_descriptions.append(
+                f"{i+1}. **{stage['name']}** (recommended: {recommended_time})\n"
+                f"   Focus: {items_text}"
+            )
+        
+        stages_text = "\n\n".join(stage_descriptions)
+        
+        prompt = f"""You are analyzing a sales call in Bahasa Indonesia to determine the current stage.
+
+Call elapsed time: {call_elapsed_seconds // 60} minutes {call_elapsed_seconds % 60} seconds (reference only)
+
+Recent conversation:
+{conversation_text}
+
+Available stages:
+{stages_text}
+
+Based on the CONTENT and TOPICS being discussed (NOT just the time), which stage is the conversation currently in?
+
+Rules:
+- Focus on WHAT is being discussed, not how long has passed
+- Look for keywords and topics matching the stage focus
+- If transitioning between stages, pick the one that matches CURRENT topic
+- Conversation is in Indonesian
+- Be confident - avoid jumping between stages too quickly
+
+Return ONLY valid JSON:
+{{
+  "stage_id": "stage_id_here",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation of why this stage"
+}}
+"""
+        
+        try:
+            response = self._call_llm(prompt, temperature=0.2, max_tokens=200)
+            result = json.loads(response)
+            
+            stage_id = result.get("stage_id", "")
+            confidence = result.get("confidence", 0.0)
+            
+            # Validate stage_id exists
+            valid_ids = [s['id'] for s in stages]
+            if stage_id not in valid_ids:
+                print(f"   ⚠️ Invalid stage_id '{stage_id}', using first stage")
+                return stages[0]['id'] if stages else '', 0.5
+            
+            return stage_id, confidence
+            
+        except Exception as e:
+            print(f"   ⚠️ Stage detection failed: {e}")
+            # Fallback to time-based detection
+            for stage in stages:
+                start = stage['startOffsetSeconds']
+                end = start + stage['durationSeconds']
+                if start <= call_elapsed_seconds < end:
+                    return stage['id'], 0.3  # Low confidence = fallback
+            return stages[0]['id'] if stages else '', 0.3
+    
     def _call_llm(self, prompt: str, temperature: float = 0.5, max_tokens: int = 500) -> str:
         """
         Call OpenRouter API

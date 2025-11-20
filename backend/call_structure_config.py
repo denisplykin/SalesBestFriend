@@ -245,7 +245,9 @@ def get_default_call_structure() -> List[CallStage]:
 
 def get_stage_by_time(elapsed_seconds: int) -> str:
     """
-    Determine current stage based on elapsed time
+    Determine current stage based on elapsed time (FALLBACK ONLY)
+    
+    NOTE: This is now a fallback. Use detect_stage_by_context() for AI-based detection.
     
     Args:
         elapsed_seconds: Seconds since call start
@@ -260,6 +262,59 @@ def get_stage_by_time(elapsed_seconds: int) -> str:
             return stage['id']
     
     return structure[0]['id']  # Default to first stage
+
+
+def detect_stage_by_context(
+    conversation_text: str,
+    elapsed_seconds: int,
+    analyzer,  # TrialClassAnalyzer instance
+    previous_stage_id: str = None,
+    min_confidence: float = 0.6
+) -> str:
+    """
+    Detect current stage using AI analysis of conversation context
+    
+    Args:
+        conversation_text: Recent conversation transcript
+        elapsed_seconds: Current call time (for context only)
+        analyzer: TrialClassAnalyzer instance with detect_current_stage method
+        previous_stage_id: Last detected stage (to prevent jitter)
+        min_confidence: Minimum confidence to accept stage change
+        
+    Returns:
+        Stage ID that matches the current conversation context
+    """
+    structure = get_default_call_structure()
+    
+    # Guard: Skip if conversation too short
+    if len(conversation_text.strip()) < 100:
+        # At start, use first stage
+        return structure[0]['id']
+    
+    try:
+        # Use AI to detect stage
+        detected_stage_id, confidence = analyzer.detect_current_stage(
+            conversation_text=conversation_text,
+            stages=structure,
+            call_elapsed_seconds=elapsed_seconds
+        )
+        
+        # If confident, use AI detection
+        if confidence >= min_confidence:
+            return detected_stage_id
+        
+        # Low confidence - check if should keep previous stage
+        if previous_stage_id and confidence < min_confidence:
+            # Don't change stage on low confidence
+            return previous_stage_id
+        
+        # Fallback to time-based
+        print(f"   ⚠️ Low confidence ({confidence:.0%}), using time-based fallback")
+        return get_stage_by_time(elapsed_seconds)
+        
+    except Exception as e:
+        print(f"   ⚠️ Stage detection error: {e}, using time-based fallback")
+        return get_stage_by_time(elapsed_seconds)
 
 
 def get_stage_timing_status(stage_id: str, elapsed_seconds: int) -> Dict[str, Any]:

@@ -27,6 +27,7 @@ import os
 from call_structure_config import (
     get_default_call_structure,
     get_stage_by_time,
+    detect_stage_by_context,
     get_stage_timing_status,
     validate_call_structure
 )
@@ -75,6 +76,9 @@ client_card_data: Dict[str, Dict[str, str]] = {}  # field_id → {value, evidenc
 
 # Call timing
 call_start_time: Optional[float] = None  # Timestamp when call started
+
+# Stage tracking
+current_stage_id: str = ""  # Track current stage to prevent jitter
 
 # Analyzer
 analyzer = get_trial_class_analyzer()
@@ -223,7 +227,21 @@ async def websocket_ingest(websocket: WebSocket):
                                 continue
                             
                             elapsed = time.time() - call_start_time
-                            current_stage_id = get_stage_by_time(int(elapsed))
+                            
+                            # Detect stage from conversation context (AI-based)
+                            global current_stage_id
+                            detected_stage = detect_stage_by_context(
+                                conversation_text=accumulated_transcript[-2000:],  # Last 2000 chars
+                                elapsed_seconds=int(elapsed),
+                                analyzer=analyzer,
+                                previous_stage_id=current_stage_id if current_stage_id else None,
+                                min_confidence=0.6
+                            )
+                            
+                            # Update current stage
+                            if detected_stage != current_stage_id:
+                                print(f"🔄 Stage transition: {current_stage_id or '(start)'} → {detected_stage}")
+                            current_stage_id = detected_stage
                             
                             print(f"\n📋 Checking checklist items...")
                             newly_completed = []
@@ -283,7 +301,7 @@ async def websocket_ingest(websocket: WebSocket):
                             
                             # ===== BUILD AND SEND RESPONSE =====
                             elapsed = time.time() - call_start_time
-                            current_stage_id = get_stage_by_time(int(elapsed))
+                            # current_stage_id already set above by detect_stage_by_context()
                             
                             # Build stages with progress and timing
                             stages_with_progress = []
@@ -492,7 +510,15 @@ async def process_transcript(transcript: str = Form(...), language: str = Form("
     
     # Quick analysis
     elapsed = time.time() - call_start_time
-    current_stage_id = get_stage_by_time(int(elapsed))
+    global current_stage_id
+    detected_stage = detect_stage_by_context(
+        conversation_text=transcript[-2000:],
+        elapsed_seconds=int(elapsed),
+        analyzer=analyzer,
+        previous_stage_id=current_stage_id if current_stage_id else None,
+        min_confidence=0.6
+    )
+    current_stage_id = detected_stage
     
     # Check items
     for stage in call_structure:
@@ -602,7 +628,19 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
                         
                         # ===== ANALYZE: Check checklist items =====
                         elapsed = time.time() - call_start_time
-                        current_stage_id = get_stage_by_time(int(elapsed))
+                        
+                        # Detect stage from conversation context
+                        global current_stage_id
+                        detected_stage = detect_stage_by_context(
+                            conversation_text=accumulated_transcript[-2000:],
+                            elapsed_seconds=int(elapsed),
+                            analyzer=analyzer,
+                            previous_stage_id=current_stage_id if current_stage_id else None,
+                            min_confidence=0.6
+                        )
+                        if detected_stage != current_stage_id:
+                            print(f"🔄 Stage transition: {current_stage_id or '(start)'} → {detected_stage}")
+                        current_stage_id = detected_stage
                         
                         print(f"\n📋 Checking checklist items (stage: {current_stage_id})...")
                         
@@ -655,7 +693,15 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
         
         # Analyze
         elapsed = time.time() - call_start_time
-        current_stage_id = get_stage_by_time(int(elapsed))
+        global current_stage_id
+        detected_stage = detect_stage_by_context(
+            conversation_text=accumulated_transcript[-2000:],
+            elapsed_seconds=int(elapsed),
+            analyzer=analyzer,
+            previous_stage_id=current_stage_id if current_stage_id else None,
+            min_confidence=0.6
+        )
+        current_stage_id = detected_stage
         
         print(f"\n📋 Checking all checklist items...")
         
