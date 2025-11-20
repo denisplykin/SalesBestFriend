@@ -498,40 +498,133 @@ async def process_transcript(transcript: str = Form(...), language: str = Form("
 
 
 @app.post("/api/process-youtube")
-async def process_youtube(url: str = Form(...), language: str = Form("id")):
+async def process_youtube(url: str = Form(...), language: str = Form("id"), real_time: bool = Form(True)):
     """
-    Process YouTube video for debugging
-    Downloads, transcribes, and analyzes a sales call recording
+    Process YouTube video for debugging (STREAMING MODE)
+    Simulates real-time call by streaming audio chunks like live recording
+    
+    Args:
+        url: YouTube video URL
+        language: Transcription language (default: "id")
+        real_time: If True, simulate real-time playback with delays (default: True)
     """
     global accumulated_transcript, call_start_time, transcription_language
     global checklist_progress, checklist_evidence, client_card_data
+    global is_live_recording
     
     try:
-        from utils.youtube_processor import process_youtube_url
+        from utils.youtube_streamer import get_streamer
+        from utils.audio_buffer import AudioBuffer
+        from utils.realtime_transcriber import transcribe_audio_buffer
         
-        print(f"🎬 Processing YouTube: {url} (language: {language})")
+        print(f"🎬 Processing YouTube (STREAMING MODE): {url}")
+        print(f"   Language: {language}")
+        print(f"   Real-time: {real_time}")
         
-        # Reset state for new analysis
-        if not call_start_time:
-            call_start_time = time.time()
-        
+        # Reset state for new session (like live recording)
+        is_live_recording = True
+        call_start_time = time.time()
         checklist_progress = {}
         checklist_evidence = {}
         client_card_data = {field['id']: "" for field in client_card_fields}
+        accumulated_transcript = ""
         transcription_language = language
+        reset_analyzer()
         
-        # Download and transcribe
-        transcript = process_youtube_url(url, language=language)
+        # Create audio buffer (same as live ingest)
+        audio_buffer = AudioBuffer(interval_seconds=10.0)
         
-        if not transcript:
-            return JSONResponse({
-                "success": False,
-                "error": "Failed to transcribe video"
-            }, status_code=400)
+        # Get streamer
+        streamer = get_streamer(chunk_duration=1.0)  # 1 second chunks
         
-        print(f"📝 Transcription complete: {len(transcript)} chars")
+        print(f"📥 Downloading and streaming YouTube video...")
         
-        accumulated_transcript = transcript
+        # Stream audio chunks (simulating live call)
+        chunk_count = 0
+        async for audio_chunk in streamer.stream_youtube_url(url, real_time=real_time):
+            chunk_count += 1
+            
+            # Add to buffer (same as live ingest)
+            ready = audio_buffer.add_chunk(audio_chunk)
+            
+            if ready:
+                print(f"\n🎯 Transcription triggered (10s buffer ready, chunk #{chunk_count})")
+                
+                try:
+                    # Get buffered audio
+                    buffer_data = audio_buffer.get_audio_data()
+                    
+                    # Transcribe (same as live ingest)
+                    loop = asyncio.get_event_loop()
+                    transcript = await loop.run_in_executor(
+                        None,
+                        transcribe_audio_buffer,
+                        buffer_data,
+                        transcription_language
+                    )
+                    
+                    if transcript:
+                        print(f"📝 Transcript ({len(transcript)} chars):")
+                        print(f"   {transcript[:200]}...")
+                        
+                        # Accumulate transcript
+                        accumulated_transcript += " " + transcript
+                        words = accumulated_transcript.split()
+                        if len(words) > 1000:
+                            accumulated_transcript = " ".join(words[-1000:])
+                        
+                        # ===== ANALYZE: Check checklist items =====
+                        elapsed = time.time() - call_start_time
+                        current_stage_id = get_stage_by_time(int(elapsed))
+                        
+                        print(f"\n📋 Checking checklist items (stage: {current_stage_id})...")
+                        
+                        for stage in call_structure:
+                            for item in stage['items']:
+                                item_id = item['id']
+                                
+                                # Skip if already completed
+                                if checklist_progress.get(item_id, False):
+                                    continue
+                                
+                                # Check with LLM
+                                completed, confidence, evidence = analyzer.check_checklist_item(
+                                    item_id,
+                                    item['content'],
+                                    item['type'],
+                                    accumulated_transcript[-500:]  # Last 500 chars
+                                )
+                                
+                                if completed and confidence > 0.7:
+                                    checklist_progress[item_id] = True
+                                    checklist_evidence[item_id] = evidence
+                                    print(f"   ✅ {item['content']} (confidence: {confidence:.2f})")
+                        
+                        # ===== ANALYZE: Extract client info =====
+                        print(f"\n👤 Extracting client information...")
+                        
+                        new_info = analyzer.extract_client_card_fields(
+                            accumulated_transcript,
+                            client_card_data
+                        )
+                        
+                        if new_info:
+                            for field_id, value in new_info.items():
+                                if value and not client_card_data.get(field_id):
+                                    client_card_data[field_id] = value
+                                    print(f"   ✅ {field_id}: {value[:50]}...")
+                        
+                except Exception as e:
+                    print(f"⚠️ Analysis error: {e}")
+                    import traceback
+                    traceback.print_exc()
+        
+        print(f"\n✅ YouTube streaming complete!")
+        print(f"   Total chunks: {chunk_count}")
+        print(f"   Transcript length: {len(accumulated_transcript)} chars")
+        
+        # Mark as done
+        is_live_recording = False
         
         # Analyze
         elapsed = time.time() - call_start_time
