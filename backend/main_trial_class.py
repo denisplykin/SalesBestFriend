@@ -270,6 +270,13 @@ async def websocket_ingest(websocket: WebSocket):
                                 global stage_start_time
                                 stage_start_time = time.time()
                                 print(f"   ⏱️ Stage timer reset")
+                                
+                                # Log stage transition
+                                log_decision("stage_transition", {
+                                    "from_stage": current_stage_id or "(start)",
+                                    "to_stage": detected_stage,
+                                    "elapsed_seconds": int(elapsed)
+                                })
                             current_stage_id = detected_stage
                             
                             print(f"\n📋 Checking checklist items...")
@@ -354,6 +361,15 @@ async def websocket_ingest(websocket: WebSocket):
                                     field_data['extractedAt'] = datetime.utcnow().isoformat() + 'Z'
                                     print(f"      - {field_id}: {field_data.get('value', '')[:50]}...")
                                     client_card_data[field_id] = field_data
+                                    
+                                    # Log decision
+                                    log_decision("client_card", {
+                                        "field_id": field_id,
+                                        "field_label": field_data.get('label', field_id),
+                                        "value": field_data.get('value', ''),
+                                        "evidence": field_data.get('evidence', ''),
+                                        "confidence": field_data.get('confidence', 1.0)
+                                    })
                             else:
                                 print(f"   ⏭️ No new client info extracted")
                             
@@ -737,6 +753,13 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
                             global stage_start_time
                             stage_start_time = time.time()
                             print(f"   ⏱️ Stage timer reset")
+                            
+                            # Log stage transition
+                            log_decision("stage_transition", {
+                                "from_stage": current_stage_id or "(start)",
+                                "to_stage": detected_stage,
+                                "elapsed_seconds": int(elapsed)
+                            })
                         current_stage_id = detected_stage
                         
                         print(f"\n📋 Checking checklist items (stage: {current_stage_id})...")
@@ -854,6 +877,15 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
                 field_data['extractedAt'] = datetime.utcnow().isoformat() + 'Z'
                 client_card_data[field_id] = field_data
                 print(f"      - {field_id}: {field_data.get('value', '')[:50]}...")
+                
+                # Log decision
+                log_decision("client_card", {
+                    "field_id": field_id,
+                    "field_label": field_data.get('label', field_id),
+                    "value": field_data.get('value', ''),
+                    "evidence": field_data.get('evidence', ''),
+                    "confidence": field_data.get('confidence', 1.0)
+                })
         
         # Build response
         stages_with_progress = []

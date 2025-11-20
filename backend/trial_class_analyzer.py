@@ -530,7 +530,9 @@ If no clear information found, return EMPTY object: {{}}
                 
                 updates[field_id] = {
                     'value': value.strip(),
-                    'evidence': evidence.strip()
+                    'evidence': evidence.strip(),
+                    'confidence': confidence,
+                    'label': field_label
                 }
             
             return updates
