@@ -44,13 +44,15 @@ load_dotenv()
 
 app = FastAPI()
 
-# CORS
+# CORS - Allow all origins for development and production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins (Vercel, localhost, etc.)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all headers
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # ===== GLOBAL STATE =====
@@ -424,6 +426,19 @@ async def websocket_coach(websocket: WebSocket):
 
 
 # ===== HTTP ENDPOINTS =====
+
+@app.options("/api/process-youtube")
+async def options_process_youtube():
+    """Handle CORS preflight for YouTube endpoint"""
+    return JSONResponse(
+        content={"message": "OK"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
 
 @app.get("/")
 async def root():
