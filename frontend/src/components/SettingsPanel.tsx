@@ -269,6 +269,10 @@ export default function SettingsPanel({ onClose, selectedLanguage, onLanguageCha
       if (!config.client_fields) {
         throw new Error('Invalid structure: client_fields is required')
       }
+      // Accept both formats: array (old) or object (new, grouped by category)
+      if (!Array.isArray(config.client_fields) && typeof config.client_fields !== 'object') {
+        throw new Error('Invalid structure: client_fields must be an array or object')
+      }
 
       // Convert simplified format to full format with auto-generated IDs
       const fullStages: CallStage[] = config.call_structure.map((stage: any) => {
