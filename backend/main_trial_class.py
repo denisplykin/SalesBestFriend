@@ -71,7 +71,7 @@ checklist_evidence: Dict[str, str] = {}  # item_id → evidence text
 checklist_last_check: Dict[str, float] = {}  # item_id → timestamp
 
 # Client card data
-client_card_data: Dict[str, str] = {}  # field_id → value
+client_card_data: Dict[str, Dict[str, str]] = {}  # field_id → {value, evidence, extractedAt}
 
 # Call timing
 call_start_time: Optional[float] = None  # Timestamp when call started
@@ -156,7 +156,7 @@ async def websocket_ingest(websocket: WebSocket):
     checklist_progress = {}
     checklist_evidence = {}
     checklist_last_check = {}
-    client_card_data = {field['id']: "" for field in client_card_fields}
+    client_card_data = {}  # Will be filled as data is extracted
     accumulated_transcript = ""
     reset_analyzer()
     
@@ -506,15 +506,18 @@ async def process_transcript(transcript: str = Form(...), language: str = Form("
                     checklist_evidence[item['id']] = evidence
     
     # Extract client info
-    new_info = analyzer.extract_client_card_fields(transcript, client_card_data)
-    for field_id, value in new_info.items():
-        client_card_data[field_id] = value
+    # Get current values (just the value strings for comparison)
+    current_values = {k: v.get('value', '') if isinstance(v, dict) else v for k, v in client_card_data.items()}
+    new_info = analyzer.extract_client_card_fields(transcript, current_values)
+    for field_id, field_data in new_info.items():
+        field_data['extractedAt'] = datetime.utcnow().isoformat() + 'Z'
+        client_card_data[field_id] = field_data
     
     return {
         "success": True,
         "currentStage": current_stage_id,
         "itemsCompleted": sum(1 for v in checklist_progress.values() if v),
-        "clientCardFields": len([v for v in client_card_data.values() if v])
+        "clientCardFields": len([v for v in client_card_data.values() if v and v.get('value')])
     }
 
 
@@ -547,7 +550,7 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
         call_start_time = time.time()
         checklist_progress = {}
         checklist_evidence = {}
-        client_card_data = {field['id']: "" for field in client_card_fields}
+        client_card_data = {}  # Will be filled as data is extracted
         accumulated_transcript = ""
         transcription_language = language
         reset_analyzer()
@@ -675,13 +678,16 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
         print(f"\n👤 Extracting client information...")
         
         # Extract client info
-        new_info = analyzer.extract_client_card_fields(transcript, client_card_data)
+        # Get current values (just the value strings for comparison)
+        current_values = {k: v.get('value', '') if isinstance(v, dict) else v for k, v in client_card_data.items()}
+        new_info = analyzer.extract_client_card_fields(transcript, current_values)
         
         if new_info:
             print(f"   ✅ Extracted {len(new_info)} fields:")
-            for field_id, value in new_info.items():
-                client_card_data[field_id] = value
-                print(f"      - {field_id}: {value[:50]}...")
+            for field_id, field_data in new_info.items():
+                field_data['extractedAt'] = datetime.utcnow().isoformat() + 'Z'
+                client_card_data[field_id] = field_data
+                print(f"      - {field_id}: {field_data.get('value', '')[:50]}...")
         
         # Build response
         stages_with_progress = []

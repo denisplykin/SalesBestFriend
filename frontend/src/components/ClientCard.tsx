@@ -7,10 +7,17 @@
  * - Updates in real-time during conversation
  */
 
+import { useState } from 'react'
 import './ClientCard.css'
 
+interface ClientFieldData {
+  value: string
+  evidence?: string
+  extractedAt?: string
+}
+
 interface ClientCardProps {
-  data: Record<string, string>
+  data: Record<string, string | ClientFieldData>
 }
 
 // Field definitions (should match backend config)
@@ -101,6 +108,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function ClientCard({ data }: ClientCardProps) {
+  const [detailsModal, setDetailsModal] = useState<{ field: typeof CLIENT_CARD_FIELDS[0]; data: ClientFieldData } | null>(null)
+
   const fieldsByCategory = CLIENT_CARD_FIELDS.reduce((acc, field) => {
     if (!acc[field.category]) {
       acc[field.category] = []
@@ -109,8 +118,34 @@ export default function ClientCard({ data }: ClientCardProps) {
     return acc
   }, {} as Record<string, typeof CLIENT_CARD_FIELDS>)
 
+  const getFieldValue = (fieldId: string): string => {
+    const fieldData = data[fieldId]
+    if (!fieldData) return ''
+    if (typeof fieldData === 'string') return fieldData
+    return fieldData.value || ''
+  }
+
+  const getFieldData = (fieldId: string): ClientFieldData => {
+    const fieldData = data[fieldId]
+    if (!fieldData) return { value: '' }
+    if (typeof fieldData === 'string') return { value: fieldData }
+    return fieldData
+  }
+
   const getFilledFieldCount = () => {
-    return Object.values(data).filter(v => v && v.trim().length > 0).length
+    return Object.keys(data).filter(key => {
+      const value = getFieldValue(key)
+      return value && value.trim().length > 0
+    }).length
+  }
+
+  const showDetails = (field: typeof CLIENT_CARD_FIELDS[0]) => {
+    const fieldData = getFieldData(field.id)
+    setDetailsModal({ field, data: fieldData })
+  }
+
+  const closeDetails = () => {
+    setDetailsModal(null)
   }
 
   return (
@@ -129,7 +164,8 @@ export default function ClientCard({ data }: ClientCardProps) {
             
             <div className="fields-list">
               {fields.map(field => {
-                const value = data[field.id] || ''
+                const value = getFieldValue(field.id)
+                const fieldData = getFieldData(field.id)
                 const isEmpty = !value || value.trim().length === 0
 
                 return (
@@ -142,11 +178,23 @@ export default function ClientCard({ data }: ClientCardProps) {
                       {!isEmpty && <span className="ai-indicator" title="AI extracted">🤖</span>}
                     </label>
                     
-                    <div className={`field-value ${field.multiline ? 'multiline' : ''}`}>
-                      {isEmpty ? (
-                        <span className="placeholder-text">Listening...</span>
-                      ) : (
-                        value
+                    <div className="field-content-row">
+                      <div className={`field-value ${field.multiline ? 'multiline' : ''}`}>
+                        {isEmpty ? (
+                          <span className="placeholder-text">Listening...</span>
+                        ) : (
+                          value
+                        )}
+                      </div>
+
+                      {!isEmpty && fieldData.evidence && (
+                        <button 
+                          className="field-details-btn"
+                          onClick={() => showDetails(field)}
+                          title="Show extraction details"
+                        >
+                          Details
+                        </button>
                       )}
                     </div>
                   </div>
@@ -161,6 +209,57 @@ export default function ClientCard({ data }: ClientCardProps) {
         <div className="empty-state">
           <p>🎧 Listening for client information...</p>
           <p className="empty-hint">Information will be extracted automatically as the conversation progresses.</p>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {detailsModal && (
+        <div className="modal-overlay" onClick={closeDetails}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Field Details</h3>
+              <button className="modal-close" onClick={closeDetails}>✕</button>
+            </div>
+            
+            <div className="modal-body">
+              <div className="detail-section">
+                <label>Field:</label>
+                <div className="detail-value">{detailsModal.field.label}</div>
+              </div>
+
+              <div className="detail-section">
+                <label>Category:</label>
+                <div className="detail-value">{CATEGORY_LABELS[detailsModal.field.category]}</div>
+              </div>
+
+              <div className="detail-section">
+                <label>Extracted Value:</label>
+                <div className="detail-value extracted-value">
+                  {detailsModal.data.value}
+                </div>
+              </div>
+
+              {detailsModal.data.extractedAt && (
+                <div className="detail-section">
+                  <label>Extracted At:</label>
+                  <div className="detail-value">
+                    {new Date(detailsModal.data.extractedAt).toLocaleString()}
+                  </div>
+                </div>
+              )}
+
+              <div className="detail-section">
+                <label>Evidence / Source:</label>
+                <div className="detail-value evidence-box">
+                  {detailsModal.data.evidence || 'No evidence available'}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-close" onClick={closeDetails}>Close</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -117,7 +117,7 @@ Return ONLY valid JSON:
         self,
         conversation_text: str,
         current_values: Dict[str, str]
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Dict[str, str]]:
         """
         Extract/update client card fields from conversation
         
@@ -126,7 +126,7 @@ Return ONLY valid JSON:
             current_values: Current field values (to avoid rewriting)
             
         Returns:
-            Dict of field_id → extracted text (only fields with new info)
+            Dict of field_id → {value: str, evidence: str} (only fields with new info)
         """
         # Guard: Skip if conversation too short
         if len(conversation_text.strip()) < 50:
@@ -157,28 +157,47 @@ Rules:
 - Keep extractions brief (1-2 sentences max per field)
 - If not mentioned, omit the field
 - Conversation is in Indonesian, but respond in English
+- Provide evidence (quote) from conversation for each extraction
 
 Return ONLY valid JSON:
 {{
-  "field_id": "extracted text",
-  "another_field_id": "extracted text"
+  "field_id": {{
+    "value": "extracted text",
+    "evidence": "relevant quote from conversation"
+  }},
+  "another_field_id": {{
+    "value": "extracted text",
+    "evidence": "relevant quote from conversation"
+  }}
 }}
 
 If no clear information, return empty object: {{}}
 """
         
         try:
-            response = self._call_llm(prompt, temperature=0.3, max_tokens=500)
+            response = self._call_llm(prompt, temperature=0.3, max_tokens=800)
             result = json.loads(response)
             
             # Filter out fields that already have values (don't overwrite unless significantly different)
             updates = {}
-            for field_id, value in result.items():
+            for field_id, field_data in result.items():
                 if field_id in current_values and current_values[field_id]:
                     # Skip if we already have this field filled
                     continue
+                
+                # Handle both old format (string) and new format (dict with value/evidence)
+                if isinstance(field_data, dict):
+                    value = field_data.get('value', '')
+                    evidence = field_data.get('evidence', '')
+                else:
+                    value = str(field_data)
+                    evidence = ''
+                
                 if value and len(value.strip()) > 5:
-                    updates[field_id] = value.strip()
+                    updates[field_id] = {
+                        'value': value.strip(),
+                        'evidence': evidence.strip()
+                    }
             
             return updates
             
