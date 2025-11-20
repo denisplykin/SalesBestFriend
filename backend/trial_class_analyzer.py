@@ -76,47 +76,73 @@ class TrialClassAnalyzer:
         else:  # "say"
             action_description = "explained or mentioned"
         
-        prompt = f"""You are analyzing a sales call transcript in Bahasa Indonesia.
+        # Build specific instructions based on type
+        if item_type == "discuss":
+            type_specific = """
+TYPE: DISCUSS/ASK
+This means you must find:
+✅ A QUESTION being asked, OR
+✅ An ANSWER that proves the question was asked
 
-Check if this sales action was completed:
+GOOD examples for "discuss":
+- Action: "Ask about child's age"
+  Evidence: "Anaknya umur berapa?" ✓ (direct question)
+  Evidence: "Anaknya 8 tahun" ✓ (answer proves question was asked)
+  
+BAD examples:
+- Evidence: "Anak suka belajar" ✗ (no question about age)
+- Evidence: "Oke, baik" ✗ (just acknowledgment)
+- Evidence: "Nanti kita diskusi umur" ✗ (promise to discuss, not actual discussion)
+"""
+        else:  # "say"
+            type_specific = """
+TYPE: SAY/EXPLAIN
+This means you must find:
+✅ The manager STATING or EXPLAINING something
+✅ NOT just asking about it, but actually TELLING
+
+GOOD examples for "say":
+- Action: "Explain how platform works"
+  Evidence: "Platform kami seperti game interaktif untuk belajar coding" ✓ (actual explanation)
+  
+BAD examples:
+- Evidence: "Mau tau cara kerja platform?" ✗ (asking, not explaining)
+- Evidence: "Nanti saya jelaskan" ✗ (promise to explain, not explanation)
+- Evidence: "Platform bagus" ✗ (opinion, not explanation)
+"""
+
+        prompt = f"""You are a STRICT quality checker analyzing a sales call in Bahasa Indonesia.
+
+TASK: Check if this action was completed:
 Action: "{item_content}"
-Type: {action_description}
 
-Recent conversation:
+Recent conversation (Bahasa Indonesia):
 {conversation_text}
 
-CRITICAL RULES:
-1. The conversation is in Bahasa Indonesia
-2. Look for MEANING and INTENT, not exact words
-3. Be EXTREMELY STRICT: require clear, direct evidence
-4. The evidence quote MUST directly show the action was completed
-5. Avoid false positives from unrelated mentions
+{type_specific}
 
-EVIDENCE MUST BE RELEVANT:
-✅ GOOD: Evidence directly shows the action
-   Action: "Ask about child's age"
-   Evidence: "Usia anaknya berapa tahun?" 
-   
-✅ GOOD: Evidence proves the discussion happened
-   Action: "Identify parent concerns"
-   Evidence: "Papa khawatir anak kurang fokus belajar"
+CRITICAL VALIDATION RULES:
+1. Evidence must be a DIRECT QUOTE from conversation
+2. Evidence must CLEARLY AND OBVIOUSLY show the action was done
+3. Generic phrases like "oke", "baik", "ya" are NEVER valid evidence
+4. Greetings ("selamat pagi", "halo") are NEVER valid evidence
+5. Promises to do something ("nanti", "akan") are NOT completion
+6. If you're even 20% unsure → mark completed=false
 
-❌ BAD: Evidence is just nearby but unrelated
-   Action: "Identify parent concerns"  
-   Evidence: "Oke, selamat datang" ← This is just greeting!
+CONFIDENCE GUIDELINES:
+- 90-100%: Action CLEARLY done, evidence is perfect
+- 70-89%: Likely done, evidence is good but not perfect
+- 50-69%: Possibly done, evidence is weak
+- <50%: Probably not done or no evidence
 
-❌ BAD: Evidence doesn't prove the action
-   Action: "Explain curriculum"
-   Evidence: "Oke baik" ← Just acknowledgment, not explanation!
-
-If you're not 100% sure the evidence PROVES the action was done, mark completed=false.
+BE EXTREMELY CONSERVATIVE. When in doubt, mark as NOT completed.
 
 Return ONLY valid JSON:
 {{
   "completed": true/false,
   "confidence": 0.0-1.0,
-  "evidence": "direct quote proving completion (or empty if not completed)",
-  "reasoning": "one sentence explaining why evidence proves this action"
+  "evidence": "exact quote showing action (empty if not completed)",
+  "reasoning": "WHY this evidence proves (or doesn't prove) the action"
 }}
 """
         
@@ -152,12 +178,14 @@ Return ONLY valid JSON:
                 return False, confidence, "Evidence too short", debug_info
             
             # Guard 3: Validate evidence relevance with second LLM call
+            # With stricter validation, we can check items with lower confidence
             validation_result = None
-            if completed and confidence >= 0.8:
+            if completed and confidence >= 0.7:
                 validation_passed = self._validate_evidence_relevance(
                     item_content=item_content,
                     evidence=evidence,
-                    reasoning=reasoning
+                    reasoning=reasoning,
+                    item_type=item_type
                 )
                 validation_result = validation_passed
                 debug_info["validation_passed"] = validation_passed
@@ -184,7 +212,8 @@ Return ONLY valid JSON:
         self,
         item_content: str,
         evidence: str,
-        reasoning: str
+        reasoning: str,
+        item_type: str = "discuss"
     ) -> bool:
         """
         Validate that evidence actually proves the action was completed
@@ -194,6 +223,7 @@ Return ONLY valid JSON:
             item_content: The action that should be completed
             evidence: The quote provided as proof
             reasoning: The reasoning from first check
+            item_type: Type of action ("discuss" or "say")
             
         Returns:
             True if evidence is relevant, False if not
@@ -201,7 +231,67 @@ Return ONLY valid JSON:
         if not evidence or len(evidence.strip()) < 5:
             return False
         
-        validation_prompt = f"""You are validating evidence quality for a sales call checklist.
+        # Hard-coded filters for obviously invalid evidence
+        evidence_lower = evidence.lower().strip()
+        
+        # List of phrases that are NEVER valid evidence
+        invalid_phrases = [
+            "oke",
+            "ok",
+            "baik",
+            "ya",
+            "halo",
+            "hai",
+            "selamat pagi",
+            "selamat siang", 
+            "selamat datang",
+            "terima kasih",
+            "sama-sama",
+            "silakan",
+            "monggo",
+            "gimana",
+            "apa kabar"
+        ]
+        
+        # If evidence is ONLY a generic phrase, reject immediately
+        for phrase in invalid_phrases:
+            if evidence_lower == phrase or evidence_lower == phrase + ".":
+                print(f"      🚫 Rejected: Evidence is just generic phrase '{phrase}'")
+                return False
+        
+        # If evidence is too short (less than 3 words), likely invalid
+        word_count = len(evidence.split())
+        if word_count < 3:
+            print(f"      🚫 Rejected: Evidence too short ({word_count} words)")
+            return False
+        
+        # Build type-specific instructions
+        if item_type == "discuss":
+            type_check = """
+ACTION TYPE: DISCUSS/ASK
+The evidence MUST show either:
+1. A QUESTION being asked (e.g., "berapa umur?", "apa yang...", "bagaimana...")
+2. An ANSWER that implies the question was asked (e.g., "usia 8 tahun" for "ask about age")
+
+REJECT if evidence is:
+- Just acknowledgment ("oke", "baik")
+- Unrelated statement that doesn't answer the question
+- Promise to discuss later ("nanti kita bahas")
+"""
+        else:  # "say"
+            type_check = """
+ACTION TYPE: SAY/EXPLAIN
+The evidence MUST show:
+1. The manager STATING or EXPLAINING information
+2. NOT asking a question, but GIVING information
+
+REJECT if evidence is:
+- A question instead of statement
+- Just mentioning a topic without explaining
+- Promise to explain later ("nanti saya jelaskan")
+"""
+        
+        validation_prompt = f"""You are a STRICT evidence validator for a sales call checklist.
 
 REQUIRED ACTION:
 "{item_content}"
@@ -209,44 +299,65 @@ REQUIRED ACTION:
 PROVIDED EVIDENCE:
 "{evidence}"
 
-REASONING (from first check):
+ORIGINAL REASONING:
 "{reasoning}"
 
-CRITICAL QUESTION: Does the evidence DIRECTLY prove that the required action was completed?
+{type_check}
 
-Examples of INVALID evidence:
-❌ Evidence is just a greeting when action is "identify concerns"
-❌ Evidence is asking about time when action is "ask about child's age"  
-❌ Evidence is unrelated chit-chat
-❌ Evidence is from a different topic
+CRITICAL CHECKS:
+1. Does evidence contain actual content (not just "oke", "ya", "baik")?
+2. Does evidence SEMANTICALLY match the action topic?
+3. Is evidence specific enough to prove completion?
+4. Does evidence match the action type (discuss vs explain)?
 
-Examples of VALID evidence:
-✅ Evidence shows the exact question was asked
-✅ Evidence shows the information was discussed
-✅ Evidence directly relates to the required action
+EXAMPLES OF INVALID MATCHING:
+❌ Action: "Ask about child's age" 
+   Evidence: "Oke, selamat datang" 
+   → NO semantic connection to age
+
+❌ Action: "Identify parent concerns"
+   Evidence: "semisal cocok ya saya sih kedua-nya"
+   → Doesn't express any concern
+
+❌ Action: "Explain curriculum structure"
+   Evidence: "Mau tau kurikulum kami?"
+   → Asking, not explaining
+
+EXAMPLES OF VALID MATCHING:
+✅ Action: "Ask about child's age"
+   Evidence: "Anaknya berapa tahun?"
+   → Direct question about age
+
+✅ Action: "Identify parent concerns"  
+   Evidence: "Papa khawatir anak kurang fokus"
+   → Clearly states a concern
+
+BE EXTREMELY STRICT. If there's ANY doubt, mark as invalid.
 
 Return ONLY valid JSON:
 {{
   "is_valid": true/false,
-  "explanation": "why evidence does or doesn't prove the action"
+  "explanation": "specific reason why evidence does/doesn't prove the action"
 }}
 """
         
         try:
-            response = self._call_llm(validation_prompt, temperature=0.1, max_tokens=100)
+            response = self._call_llm(validation_prompt, temperature=0.05, max_tokens=150)
             result = json.loads(response)
             is_valid = result.get("is_valid", False)
             explanation = result.get("explanation", "")
             
             if not is_valid:
-                print(f"      🔍 Validation: {explanation}")
+                print(f"      🔍 Validation REJECTED: {explanation}")
+            else:
+                print(f"      ✅ Validation PASSED: {explanation}")
             
             return is_valid
             
         except Exception as e:
             print(f"   ⚠️ Evidence validation error: {e}")
-            # On error, be conservative - accept the original decision
-            return True
+            # On error, be conservative - reject to avoid false positives
+            return False
     
     def extract_client_card_fields(
         self,
@@ -409,47 +520,109 @@ If no clear information, return empty object: {{}}
         if not evidence or len(evidence.strip()) < 5:
             return False
         
-        validation_prompt = f"""You are validating evidence quality for client information extraction.
+        # Hard-coded filters for obviously invalid evidence
+        evidence_lower = evidence.lower().strip()
+        
+        # Reject common greeting/acknowledgment phrases
+        invalid_starts = [
+            "oke,",
+            "ok,",
+            "baik,",
+            "ya,",
+            "halo,",
+            "hai,",
+            "selamat pagi",
+            "selamat siang",
+            "selamat datang",
+            "terima kasih"
+        ]
+        
+        for start in invalid_starts:
+            if evidence_lower.startswith(start):
+                print(f"      🚫 Client field rejected: Evidence starts with greeting '{start}'")
+                return False
+        
+        # Evidence must be substantial (at least 3 words)
+        word_count = len(evidence.split())
+        if word_count < 3:
+            print(f"      🚫 Client field rejected: Evidence too short ({word_count} words)")
+            return False
+        
+        # Check if value appears in evidence (it should!)
+        # This catches cases where LLM hallucinates
+        value_lower = value.lower().strip()
+        
+        # For names and specific values, they should appear in evidence
+        if len(value.split()) <= 3:  # Short values like names, ages
+            # Allow some flexibility (partial match, transliteration)
+            value_words = value_lower.split()
+            matches = sum(1 for word in value_words if word in evidence_lower)
+            if matches == 0 and len(value) > 3:
+                print(f"      🚫 Client field rejected: Value '{value}' not found in evidence")
+                return False
+        
+        validation_prompt = f"""You are a STRICT validator for client information extraction.
 
 FIELD: {field_label}
 EXTRACTED VALUE: "{value}"
 PROVIDED EVIDENCE: "{evidence}"
 
-CRITICAL QUESTION: Does the evidence DIRECTLY prove this information about the client?
+TASK: Verify that the evidence DIRECTLY AND CLEARLY proves this specific information.
 
-Examples of INVALID evidence:
-❌ Evidence is just a greeting when field is "child's name"
-❌ Evidence is about the lesson plan when field is "parent's goal"
-❌ Evidence is unrelated chit-chat
-❌ Evidence mentions the word but in different context
+CRITICAL CHECKS:
+1. Is evidence about the CLIENT (child/parent), not about the lesson?
+2. Does evidence explicitly state or strongly imply the extracted value?
+3. Is evidence specific, not just generic conversation?
+4. Is the extracted value actually present (or clearly implied) in the evidence?
 
-Examples of VALID evidence:
-✅ Evidence shows the child's actual name being mentioned
-✅ Evidence shows parent stating their goal
-✅ Evidence shows the specific information being discussed
+SPECIFIC FIELD CHECKS:
+
+For NAME fields (child_name, parent_name):
+✅ VALID: "Anaknya bernama Andi" → value: "Andi"
+✅ VALID: "Saya Papa Budi" → value: "Budi"
+❌ INVALID: "Oke, selamat datang, Seki" → value: "Seki" (greeting, not introduction)
+
+For AGE/GRADE fields:
+✅ VALID: "Andi kelas 5 SD" → value: "Grade 5"
+✅ VALID: "Umurnya 10 tahun" → value: "10 years old"
+❌ INVALID: "Kita akan belajar untuk kelas 5" → (about lesson, not child)
+
+For INTERESTS/GOALS:
+✅ VALID: "Andi suka main Roblox" → value: "Roblox"
+✅ VALID: "Papa pengen anak bisa coding" → value: "Learn coding"
+❌ INVALID: "Kita akan belajar coding hari ini" → (about lesson, not goal)
+
+For SOURCE (how they found us):
+✅ VALID: "Dari teman yang rekomendasikan" → value: "Friend referral"
+✅ VALID: "Lihat di Instagram" → value: "Instagram"
+❌ INVALID: "Papa awal tau" → (incomplete, not clear source)
+
+BE EXTREMELY STRICT. Reject if there's ANY doubt.
 
 Return ONLY valid JSON:
 {{
   "is_valid": true/false,
-  "explanation": "why evidence does or doesn't prove the information"
+  "explanation": "specific reason why evidence does/doesn't prove the information"
 }}
 """
         
         try:
-            response = self._call_llm(validation_prompt, temperature=0.1, max_tokens=100)
+            response = self._call_llm(validation_prompt, temperature=0.05, max_tokens=150)
             result = json.loads(response)
             is_valid = result.get("is_valid", False)
             explanation = result.get("explanation", "")
             
             if not is_valid:
-                print(f"      🔍 Client field validation: {explanation}")
+                print(f"      🔍 Client field REJECTED: {explanation}")
+            else:
+                print(f"      ✅ Client field PASSED: {explanation}")
             
             return is_valid
             
         except Exception as e:
             print(f"   ⚠️ Client field validation error: {e}")
-            # On error, be conservative - accept the original decision
-            return True
+            # On error, be conservative - reject to avoid false positives
+            return False
     
     def batch_check_items(
         self,
