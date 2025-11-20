@@ -216,6 +216,12 @@ async def websocket_ingest(websocket: WebSocket):
                                 accumulated_transcript = " ".join(words[-1000:])
                             
                             # ===== ANALYZE: Check checklist items =====
+                            # Guard against None (happens when WebSocket reconnects)
+                            if call_start_time is None:
+                                print("⚠️ call_start_time is None, skipping analysis")
+                                audio_buffer.clear()
+                                continue
+                            
                             elapsed = time.time() - call_start_time
                             current_stage_id = get_stage_by_time(int(elapsed))
                             
