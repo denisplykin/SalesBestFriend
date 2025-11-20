@@ -5,13 +5,11 @@
   "framework": "vite",
   "devCommand": "cd frontend && npm run dev",
   "installCommand": "cd frontend && npm install",
-  "env": {
-    "VITE_API_WS": "wss://salesbestfriend-production.up.railway.app",
-    "VITE_API_HTTP": "https://salesbestfriend-production.up.railway.app"
-  },
   "build": {
     "env": {
-      "NODE_VERSION": "18"
+      "NODE_VERSION": "18",
+      "VITE_API_WS": "wss://salesbestfriend-production.up.railway.app",
+      "VITE_API_HTTP": "https://salesbestfriend-production.up.railway.app"
     }
   }
 }
