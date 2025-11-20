@@ -81,6 +81,25 @@ call_start_time: Optional[float] = None  # Timestamp when call started
 current_stage_id: str = ""  # Track current stage to prevent jitter
 stage_start_time: Optional[float] = None  # Timestamp when current stage started
 
+# Debug logging
+debug_log: List[Dict] = []  # Stores all AI decisions for debugging
+
+
+def log_decision(decision_type: str, data: Dict):
+    """Add a decision to the debug log"""
+    global debug_log
+    timestamp = datetime.now().isoformat()
+    entry = {
+        "timestamp": timestamp,
+        "type": decision_type,
+        **data
+    }
+    debug_log.append(entry)
+    # Keep only last 500 entries to avoid memory issues
+    if len(debug_log) > 500:
+        debug_log = debug_log[-500:]
+
+
 # Analyzer
 analyzer = get_trial_class_analyzer()
 
@@ -271,12 +290,22 @@ async def websocket_ingest(websocket: WebSocket):
                                     checklist_last_check[item_id] = time.time()
                                     
                                     # Check with LLM
-                                    completed, confidence, evidence = analyzer.check_checklist_item(
+                                    completed, confidence, evidence, debug_info = analyzer.check_checklist_item(
                                         item_id,
                                         item['content'],
                                         item['type'],
                                         accumulated_transcript[-1500:]  # Last 1500 chars
                                     )
+                                    
+                                    # Log decision
+                                    log_decision("checklist_item", {
+                                        "item_id": item_id,
+                                        "item_content": item['content'],
+                                        "completed": completed,
+                                        "confidence": confidence,
+                                        "evidence": evidence,
+                                        **debug_info
+                                    })
                                     
                                     if completed:
                                         checklist_progress[item_id] = True
@@ -511,6 +540,15 @@ async def health():
     }
 
 
+@app.get("/api/debug-log")
+async def get_debug_log():
+    """Get debug log of all AI decisions"""
+    return {
+        "log": debug_log[-100:],  # Last 100 entries
+        "total_entries": len(debug_log)
+    }
+
+
 # For backward compatibility / debugging
 @app.post("/api/process-transcript")
 async def process_transcript(transcript: str = Form(...), language: str = Form("id")):
@@ -540,12 +578,23 @@ async def process_transcript(transcript: str = Form(...), language: str = Form("
     for stage in call_structure:
         for item in stage['items']:
             if not checklist_progress.get(item['id'], False):
-                completed, conf, evidence = analyzer.check_checklist_item(
+                completed, conf, evidence, debug_info = analyzer.check_checklist_item(
                     item['id'],
                     item['content'],
                     item['type'],
                     transcript
                 )
+                
+                # Log decision
+                log_decision("checklist_item", {
+                    "item_id": item['id'],
+                    "item_content": item['content'],
+                    "completed": completed,
+                    "confidence": conf,
+                    "evidence": evidence,
+                    **debug_info
+                })
+                
                 if completed:
                     checklist_progress[item['id']] = True
                     checklist_evidence[item['id']] = evidence
@@ -676,12 +725,22 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
                                     continue
                                 
                                 # Check with LLM
-                                completed, confidence, evidence = analyzer.check_checklist_item(
+                                completed, confidence, evidence, debug_info = analyzer.check_checklist_item(
                                     item_id,
                                     item['content'],
                                     item['type'],
                                     accumulated_transcript[-500:]  # Last 500 chars
                                 )
+                                
+                                # Log decision
+                                log_decision("checklist_item", {
+                                    "item_id": item_id,
+                                    "item_content": item['content'],
+                                    "completed": completed,
+                                    "confidence": confidence,
+                                    "evidence": evidence,
+                                    **debug_info
+                                })
                                 
                                 if completed and confidence > 0.7:
                                     checklist_progress[item_id] = True
@@ -733,12 +792,22 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
             for item in stage['items']:
                 item_id = item['id']
                 
-                completed, conf, evidence = analyzer.check_checklist_item(
+                completed, conf, evidence, debug_info = analyzer.check_checklist_item(
                     item_id,
                     item['content'],
                     item['type'],
                     transcript
                 )
+                
+                # Log decision
+                log_decision("checklist_item", {
+                    "item_id": item_id,
+                    "item_content": item['content'],
+                    "completed": completed,
+                    "confidence": conf,
+                    "evidence": evidence,
+                    **debug_info
+                })
                 
                 if completed:
                     checklist_progress[item_id] = True

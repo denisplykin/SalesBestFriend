@@ -49,7 +49,7 @@ class TrialClassAnalyzer:
         item_content: str,
         item_type: str,
         conversation_text: str
-    ) -> Tuple[bool, float, str]:
+    ) -> Tuple[bool, float, str, Dict]:
         """
         Check if a checklist item has been completed
         
@@ -60,11 +60,15 @@ class TrialClassAnalyzer:
             conversation_text: Recent conversation (Indonesian)
             
         Returns:
-            (completed: bool, confidence: float, evidence: str)
+            (completed: bool, confidence: float, evidence: str, debug_info: dict)
         """
         # Guard: Skip if conversation too short
         if len(conversation_text.strip()) < 30:
-            return False, 0.0, "Insufficient conversation context"
+            debug_info = {
+                "stage": "guard_context_too_short",
+                "context_length": len(conversation_text.strip())
+            }
+            return False, 0.0, "Insufficient conversation context", debug_info
         
         # Build prompt based on item type
         if item_type == "discuss":
@@ -125,30 +129,56 @@ Return ONLY valid JSON:
             evidence = result.get("evidence", "")
             reasoning = result.get("reasoning", "")
             
+            debug_info = {
+                "stage": "initial_check",
+                "context_preview": conversation_text[-200:],  # Last 200 chars
+                "first_completed": completed,
+                "first_confidence": confidence,
+                "first_evidence": evidence,
+                "first_reasoning": reasoning,
+                "guards_passed": []
+            }
+            
             # Guard 1: Only accept high confidence completions
             if completed and confidence < 0.8:
-                return False, confidence, "Confidence too low"
+                debug_info["stage"] = "guard_1_low_confidence"
+                debug_info["guards_passed"].append("confidence < 0.8")
+                return False, confidence, "Confidence too low", debug_info
             
             # Guard 2: Evidence must exist and be substantial
             if completed and len(evidence.strip()) < 10:
-                return False, confidence, "Evidence too short"
+                debug_info["stage"] = "guard_2_evidence_too_short"
+                debug_info["guards_passed"].append("evidence length < 10")
+                return False, confidence, "Evidence too short", debug_info
             
             # Guard 3: Validate evidence relevance with second LLM call
+            validation_result = None
             if completed and confidence >= 0.8:
                 validation_passed = self._validate_evidence_relevance(
                     item_content=item_content,
                     evidence=evidence,
                     reasoning=reasoning
                 )
+                validation_result = validation_passed
+                debug_info["validation_passed"] = validation_passed
+                
                 if not validation_passed:
                     print(f"   ⚠️ Evidence validation FAILED for '{item_content[:50]}...'")
-                    return False, confidence, f"Evidence not relevant: {evidence[:100]}"
+                    debug_info["stage"] = "guard_3_validation_failed"
+                    debug_info["guards_passed"].append("validation failed")
+                    return False, confidence, f"Evidence not relevant: {evidence[:100]}", debug_info
             
-            return completed, confidence, evidence
+            debug_info["stage"] = "accepted"
+            debug_info["final_decision"] = "completed" if completed else "not_completed"
+            return completed, confidence, evidence, debug_info
             
         except Exception as e:
             print(f"   ⚠️ Item check failed for {item_id}: {e}")
-            return False, 0.0, str(e)
+            debug_info = {
+                "stage": "error",
+                "error": str(e)
+            }
+            return False, 0.0, str(e), debug_info
     
     def _validate_evidence_relevance(
         self,
