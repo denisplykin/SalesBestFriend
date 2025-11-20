@@ -97,6 +97,10 @@ export default function SettingsPanel({ onClose, selectedLanguage, onLanguageCha
     return saved ? JSON.parse(saved) : DEFAULT_FIELDS
   })
 
+  const [showImportExport, setShowImportExport] = useState(false)
+  const [importJson, setImportJson] = useState('')
+  const [importError, setImportError] = useState('')
+
   // Helper to generate unique IDs
   const generateId = () => `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
@@ -196,6 +200,56 @@ export default function SettingsPanel({ onClose, selectedLanguage, onLanguageCha
     }
   }
 
+  // ===== IMPORT / EXPORT =====
+
+  const handleExportJSON = () => {
+    const config = {
+      call_structure: stages,
+      client_fields: fields
+    }
+    const json = JSON.stringify(config, null, 2)
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(json).then(() => {
+      alert('✅ Configuration copied to clipboard!')
+    }).catch(() => {
+      // Fallback: show JSON in textarea
+      setImportJson(json)
+      setShowImportExport(true)
+      alert('📋 Configuration shown below. Copy it manually.')
+    })
+  }
+
+  const handleImportJSON = () => {
+    setImportError('')
+    setImportJson('')
+    setShowImportExport(true)
+  }
+
+  const handleImportConfirm = () => {
+    try {
+      const config = JSON.parse(importJson)
+      
+      // Validate structure
+      if (!config.call_structure || !Array.isArray(config.call_structure)) {
+        throw new Error('Invalid structure: call_structure must be an array')
+      }
+      if (!config.client_fields || !Array.isArray(config.client_fields)) {
+        throw new Error('Invalid structure: client_fields must be an array')
+      }
+
+      // Apply configuration
+      setStages(config.call_structure)
+      setFields(config.client_fields)
+      setShowImportExport(false)
+      setImportJson('')
+      alert('✅ Configuration imported successfully!')
+      
+    } catch (err: any) {
+      setImportError(err.message || 'Invalid JSON format')
+    }
+  }
+
   return (
     <div className="settings-overlay" onClick={onClose}>
       <div className="settings-panel" onClick={e => e.stopPropagation()}>
@@ -272,9 +326,17 @@ export default function SettingsPanel({ onClose, selectedLanguage, onLanguageCha
                     Configure stages and checklist items for your trial class flow.
                   </p>
                 </div>
-                <button className="btn-add" onClick={addStage}>
-                  ➕ Add Stage
-                </button>
+                <div className="header-actions">
+                  <button className="btn-import" onClick={handleImportJSON}>
+                    📥 Import JSON
+                  </button>
+                  <button className="btn-export" onClick={handleExportJSON}>
+                    📤 Export JSON
+                  </button>
+                  <button className="btn-add" onClick={addStage}>
+                    ➕ Add Stage
+                  </button>
+                </div>
               </div>
               
               <div className="editor-container">
@@ -364,9 +426,17 @@ export default function SettingsPanel({ onClose, selectedLanguage, onLanguageCha
                     Configure which fields to track for client information.
                   </p>
                 </div>
-                <button className="btn-add" onClick={addField}>
-                  ➕ Add Field
-                </button>
+                <div className="header-actions">
+                  <button className="btn-import" onClick={handleImportJSON}>
+                    📥 Import JSON
+                  </button>
+                  <button className="btn-export" onClick={handleExportJSON}>
+                    📤 Export JSON
+                  </button>
+                  <button className="btn-add" onClick={addField}>
+                    ➕ Add Field
+                  </button>
+                </div>
               </div>
               
               <div className="editor-container">
@@ -442,6 +512,49 @@ export default function SettingsPanel({ onClose, selectedLanguage, onLanguageCha
           </div>
         </div>
       </div>
+
+      {/* Import/Export Modal */}
+      {showImportExport && (
+        <div className="import-export-modal" onClick={() => setShowImportExport(false)}>
+          <div className="import-export-content" onClick={e => e.stopPropagation()}>
+            <div className="import-export-header">
+              <h3>Import / Export Configuration</h3>
+              <button className="close-btn" onClick={() => setShowImportExport(false)}>✕</button>
+            </div>
+            
+            <div className="import-export-body">
+              <p className="import-export-info">
+                {importJson && !importError 
+                  ? '📋 Copy the JSON below or paste your own configuration:' 
+                  : '📥 Paste your JSON configuration below:'}
+              </p>
+              
+              <textarea
+                className="json-textarea"
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+                placeholder='{"call_structure": [...], "client_fields": [...]}'
+                rows={15}
+              />
+              
+              {importError && (
+                <div className="import-error">
+                  ❌ {importError}
+                </div>
+              )}
+            </div>
+            
+            <div className="import-export-footer">
+              <button className="btn-secondary" onClick={() => setShowImportExport(false)}>
+                Cancel
+              </button>
+              <button className="btn-save" onClick={handleImportConfirm}>
+                ✅ Import Configuration
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
