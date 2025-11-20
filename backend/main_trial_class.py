@@ -95,6 +95,8 @@ def log_decision(decision_type: str, data: Dict):
         **data
     }
     debug_log.append(entry)
+    print(f"📝 Logged decision: {decision_type}, total entries: {len(debug_log)}")
+    
     # Keep only last 500 entries to avoid memory issues
     if len(debug_log) > 500:
         debug_log = debug_log[-500:]
@@ -402,6 +404,7 @@ async def websocket_ingest(websocket: WebSocket):
                                 "debugLog": debug_log[-50:]  # Last 50 entries for debugging
                             }
                             
+                            print(f"📤 Sending update with {len(debug_log)} total log entries, last 50: {min(50, len(debug_log))} entries")
                             message_json = json.dumps(message_data)
                             
                             disconnected = set()
@@ -895,6 +898,7 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
             "debugLog": debug_log[-50:]  # Last 50 entries for debugging
         }
         
+        print(f"📤 Sending YouTube update with {len(debug_log)} total log entries, last 50: {min(50, len(debug_log))} entries")
         message_json = json.dumps(message_data)
         
         disconnected = set()

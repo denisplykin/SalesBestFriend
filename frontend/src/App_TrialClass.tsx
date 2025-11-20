@@ -147,7 +147,13 @@ function App_TrialClass() {
         
         // Update debug logs if present
         if (data.debugLog) {
+          console.log('🐛 Debug logs received:', data.debugLog.length, 'entries')
+          if (data.debugLog.length > 0) {
+            console.log('Latest log:', data.debugLog[data.debugLog.length - 1])
+          }
           setDebugLogs(data.debugLog)
+        } else {
+          console.log('⚠️ No debugLog in message')
         }
       } catch (err) {
         console.error('❌ Parse error:', err)
