@@ -17,6 +17,7 @@ import CallTimer from './components/CallTimer'
 import ClientCard from './components/ClientCard'
 import SettingsPanel from './components/SettingsPanel'
 import YouTubeDebugPanel from './components/YouTubeDebugPanel'
+import DebugLogPanel from './components/DebugLogPanel'
 
 interface Stage {
   id: string
@@ -37,6 +38,12 @@ interface ChecklistItem {
   evidence: string
 }
 
+interface DebugLogEntry {
+  timestamp: string
+  type: string
+  [key: string]: any
+}
+
 interface CoachMessage {
   type: 'initial' | 'update'
   callElapsedSeconds: number
@@ -45,6 +52,7 @@ interface CoachMessage {
   stages: Stage[]
   clientCard: Record<string, string>
   transcriptPreview?: string
+  debugLog?: DebugLogEntry[]
 }
 
 function App_TrialClass() {
@@ -57,6 +65,8 @@ function App_TrialClass() {
   const [clientCard, setClientCard] = useState<Record<string, string>>({})
   const [showSettings, setShowSettings] = useState(false)
   const [showYouTubeDebug, setShowYouTubeDebug] = useState(false)
+  const [showDebugLog, setShowDebugLog] = useState(false)
+  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([])
   const [selectedLanguage, setSelectedLanguage] = useState('id')
   
   const ingestWsRef = useRef<WebSocket | null>(null)
@@ -134,6 +144,11 @@ function App_TrialClass() {
         setCurrentStageId(data.currentStageId)
         setStages(data.stages)
         setClientCard(data.clientCard)
+        
+        // Update debug logs if present
+        if (data.debugLog) {
+          setDebugLogs(data.debugLog)
+        }
       } catch (err) {
         console.error('❌ Parse error:', err)
       }
@@ -384,6 +399,14 @@ function App_TrialClass() {
           </button>
           
           <button 
+            className="btn-debug-log"
+            onClick={() => setShowDebugLog(true)}
+            title="Debug Log - AI Decisions"
+          >
+            🐛
+          </button>
+          
+          <button 
             className="btn-debug"
             onClick={() => window.open(`${import.meta.env.VITE_API_HTTP || 'https://sales-best-friend-production.up.railway.app'}/api/debug-log`, '_blank')}
             title="Debug Log - AI Decisions"
@@ -431,6 +454,13 @@ function App_TrialClass() {
           onClose={() => setShowYouTubeDebug(false)}
         />
       )}
+
+      {/* Debug Log Panel */}
+      <DebugLogPanel
+        logs={debugLogs}
+        isVisible={showDebugLog}
+        onClose={() => setShowDebugLog(false)}
+      />
 
       {/* Instructions (shown when idle) */}
       {!isRecording && status === 'idle' && (

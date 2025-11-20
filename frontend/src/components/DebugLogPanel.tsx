@@ -13,25 +13,60 @@ import './DebugLogPanel.css'
 
 interface LogEntry {
   timestamp: string
-  type: 'checklist' | 'client_field' | 'stage_transition' | 'validation'
-  action: string
-  details: {
-    item?: string
-    field?: string
-    stage?: string
-    confidence?: number
-    evidence?: string
-    reasoning?: string
-    validated?: boolean
-    validationReason?: string
-  }
-  status: 'success' | 'warning' | 'error' | 'info'
+  type: string
+  [key: string]: any // Backend sends flexible format
 }
 
 interface DebugLogPanelProps {
   logs: LogEntry[]
   isVisible: boolean
   onClose: () => void
+}
+
+// Helper to format log entry into display format
+function formatLogEntry(log: LogEntry): {
+  type: string
+  action: string
+  status: 'success' | 'warning' | 'error' | 'info'
+  details: Record<string, any>
+} {
+  const type = log.type || 'unknown'
+  let action = ''
+  let status: 'success' | 'warning' | 'error' | 'info' = 'info'
+  const details: Record<string, any> = {}
+
+  if (type === 'checklist_item') {
+    action = log.item_content || 'Checklist item checked'
+    status = log.completed ? 'success' : 'info'
+    details.item = log.item_content
+    details.confidence = log.confidence
+    details.evidence = log.first_evidence || log.evidence
+    details.reasoning = log.first_reasoning || log.reasoning
+    details.validated = log.validation_passed
+  } else if (type === 'duplicate_evidence') {
+    action = `Duplicate evidence detected for ${log.item_id}`
+    status = 'warning'
+    details.item = log.item_id
+    details.evidence = log.evidence
+    details.duplicate_of = log.duplicate_of
+  } else if (type === 'client_field') {
+    action = `Client field: ${log.field_id || 'extracted'}`
+    status = log.validated ? 'success' : 'warning'
+    details.field = log.field_id
+    details.value = log.value
+    details.evidence = log.evidence
+    details.confidence = log.confidence
+  } else if (type === 'stage_transition') {
+    action = `Stage transition: ${log.from_stage} → ${log.to_stage}`
+    status = 'info'
+    details.stage = log.to_stage
+    details.confidence = log.confidence
+  } else {
+    action = JSON.stringify(log).substring(0, 100)
+    status = 'info'
+  }
+
+  return { type, action, status, details }
 }
 
 export default function DebugLogPanel({ logs, isVisible, onClose }: DebugLogPanelProps) {
@@ -65,10 +100,10 @@ export default function DebugLogPanel({ logs, isVisible, onClose }: DebugLogPane
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'checklist': return '📋'
+      case 'checklist_item': return '📋'
       case 'client_field': return '👤'
       case 'stage_transition': return '🔄'
-      case 'validation': return '🔍'
+      case 'duplicate_evidence': return '⚠️'
       default: return '📝'
     }
   }
@@ -92,8 +127,8 @@ export default function DebugLogPanel({ logs, isVisible, onClose }: DebugLogPane
               All ({logs.length})
             </button>
             <button 
-              className={filter === 'checklist' ? 'active' : ''}
-              onClick={() => setFilter('checklist')}
+              className={filter === 'checklist_item' ? 'active' : ''}
+              onClick={() => setFilter('checklist_item')}
             >
               📋 Checklist
             </button>
@@ -110,10 +145,10 @@ export default function DebugLogPanel({ logs, isVisible, onClose }: DebugLogPane
               🔄 Stages
             </button>
             <button 
-              className={filter === 'validation' ? 'active' : ''}
-              onClick={() => setFilter('validation')}
+              className={filter === 'duplicate_evidence' ? 'active' : ''}
+              onClick={() => setFilter('duplicate_evidence')}
             >
-              🔍 Validation
+              ⚠️ Duplicates
             </button>
           </div>
 
@@ -133,79 +168,81 @@ export default function DebugLogPanel({ logs, isVisible, onClose }: DebugLogPane
               <p>No logs yet. Start recording to see AI decisions in real-time.</p>
             </div>
           ) : (
-            filteredLogs.map((log, index) => (
-              <div 
-                key={index} 
-                className="log-entry"
-                style={{ borderLeftColor: getStatusColor(log.status) }}
-              >
-                <div className="log-header">
-                  <span className="log-icon">{getTypeIcon(log.type)}</span>
-                  <span className="log-time">{log.timestamp}</span>
-                  <span 
-                    className="log-status"
-                    style={{ backgroundColor: getStatusColor(log.status) }}
-                  >
-                    {log.status}
-                  </span>
+            filteredLogs.map((log, index) => {
+              const formatted = formatLogEntry(log)
+              return (
+                <div 
+                  key={index} 
+                  className="log-entry"
+                  style={{ borderLeftColor: getStatusColor(formatted.status) }}
+                >
+                  <div className="log-header">
+                    <span className="log-icon">{getTypeIcon(formatted.type)}</span>
+                    <span className="log-time">{log.timestamp}</span>
+                    <span 
+                      className="log-status"
+                      style={{ backgroundColor: getStatusColor(formatted.status) }}
+                    >
+                      {formatted.status}
+                    </span>
+                  </div>
+
+                  <div className="log-action">{formatted.action}</div>
+
+                  <div className="log-details">
+                    {formatted.details.item && (
+                      <div className="detail-row">
+                        <strong>Item:</strong> {formatted.details.item}
+                      </div>
+                    )}
+                    
+                    {formatted.details.field && (
+                      <div className="detail-row">
+                        <strong>Field:</strong> {formatted.details.field}
+                      </div>
+                    )}
+
+                    {formatted.details.stage && (
+                      <div className="detail-row">
+                        <strong>Stage:</strong> {formatted.details.stage}
+                      </div>
+                    )}
+
+                    {formatted.details.confidence !== undefined && (
+                      <div className="detail-row">
+                        <strong>Confidence:</strong> {(formatted.details.confidence * 100).toFixed(0)}%
+                      </div>
+                    )}
+
+                    {formatted.details.evidence && (
+                      <div className="detail-row">
+                        <strong>Evidence:</strong>
+                        <div className="evidence-text">{formatted.details.evidence}</div>
+                      </div>
+                    )}
+
+                    {formatted.details.reasoning && (
+                      <div className="detail-row">
+                        <strong>Reasoning:</strong>
+                        <div className="reasoning-text">{formatted.details.reasoning}</div>
+                      </div>
+                    )}
+
+                    {formatted.details.validated !== undefined && (
+                      <div className="detail-row">
+                        <strong>Validated:</strong> {formatted.details.validated ? '✅ Pass' : '❌ Fail'}
+                      </div>
+                    )}
+
+                    {formatted.details.duplicate_of && (
+                      <div className="detail-row">
+                        <strong>Duplicate of:</strong> {formatted.details.duplicate_of}
+                      </div>
+                    )}
+                  </div>
                 </div>
-
-                <div className="log-action">{log.action}</div>
-
-                <div className="log-details">
-                  {log.details.item && (
-                    <div className="detail-row">
-                      <strong>Item:</strong> {log.details.item}
-                    </div>
-                  )}
-                  
-                  {log.details.field && (
-                    <div className="detail-row">
-                      <strong>Field:</strong> {log.details.field}
-                    </div>
-                  )}
-
-                  {log.details.stage && (
-                    <div className="detail-row">
-                      <strong>Stage:</strong> {log.details.stage}
-                    </div>
-                  )}
-
-                  {log.details.confidence !== undefined && (
-                    <div className="detail-row">
-                      <strong>Confidence:</strong> {(log.details.confidence * 100).toFixed(0)}%
-                    </div>
-                  )}
-
-                  {log.details.evidence && (
-                    <div className="detail-row">
-                      <strong>Evidence:</strong>
-                      <div className="evidence-text">{log.details.evidence}</div>
-                    </div>
-                  )}
-
-                  {log.details.reasoning && (
-                    <div className="detail-row">
-                      <strong>Reasoning:</strong>
-                      <div className="reasoning-text">{log.details.reasoning}</div>
-                    </div>
-                  )}
-
-                  {log.details.validated !== undefined && (
-                    <div className="detail-row">
-                      <strong>Validated:</strong> {log.details.validated ? '✅ Pass' : '❌ Fail'}
-                    </div>
-                  )}
-
-                  {log.details.validationReason && (
-                    <div className="detail-row">
-                      <strong>Validation Reason:</strong>
-                      <div className="validation-reason">{log.details.validationReason}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
           <div ref={logsEndRef} />
         </div>
