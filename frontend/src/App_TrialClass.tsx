@@ -382,6 +382,14 @@ function App_TrialClass() {
           >
             🎬
           </button>
+          
+          <button 
+            className="btn-debug"
+            onClick={() => window.open(`${import.meta.env.VITE_API_HTTP || 'https://sales-best-friend-production.up.railway.app'}/api/debug-log`, '_blank')}
+            title="Debug Log - AI Decisions"
+          >
+            🔍
+          </button>
         </div>
       </div>
 
