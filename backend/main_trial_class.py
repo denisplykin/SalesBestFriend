@@ -505,7 +505,6 @@ async def websocket_coach(websocket: WebSocket):
             message = json.loads(text_data)
             
             if message.get('type') == 'set_language':
-                global transcription_language
                 transcription_language = message.get('language', 'id')
                 print(f"🌍 Language set to: {transcription_language}")
             
@@ -667,6 +666,7 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
     global accumulated_transcript, call_start_time, transcription_language
     global checklist_progress, checklist_evidence, client_card_data
     global is_live_recording
+    global current_stage_id, stage_start_time
     
     try:
         from utils.youtube_streamer import get_streamer
@@ -678,7 +678,6 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
         print(f"   Real-time: {real_time}")
         
         # Reset state for new session (like live recording)
-        global current_stage_id, stage_start_time
         is_live_recording = True
         call_start_time = time.time()
         stage_start_time = time.time()
