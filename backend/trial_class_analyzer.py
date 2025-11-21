@@ -21,6 +21,12 @@ from client_card_config import get_default_client_card_fields, get_extraction_hi
 
 load_dotenv()
 
+# VERSION MARKER - If you see this, the latest code is loaded!
+print("=" * 60)
+print("🚀 TRIAL CLASS ANALYZER MODULE LOADED")
+print("📦 Version: 2025-11-21 (Gemini 2.5 Flash HARDCODED)")
+print("=" * 60)
+
 
 class TrialClassAnalyzer:
     """LLM-based analyzer for trial class sales calls"""
