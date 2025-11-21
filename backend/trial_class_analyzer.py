@@ -228,7 +228,11 @@ Return ONLY valid JSON:
         Returns:
             True if evidence is relevant, False if not
         """
+        print(f"      🔍 VALIDATING Evidence for: '{item_content[:60]}...'")
+        print(f"         Evidence: '{evidence[:100]}...'")
+        
         if not evidence or len(evidence.strip()) < 5:
+            print(f"      🚫 Rejected: Evidence too short or empty")
             return False
         
         # Hard-coded filters for obviously invalid evidence
@@ -253,6 +257,28 @@ Return ONLY valid JSON:
             "apa kabar"
         ]
         
+        # Filter out self-introductions (these are NEVER evidence for questions/discussions)
+        introduction_patterns = [
+            "nama saya",
+            "saya adalah",
+            "perkenalkan",
+            "kenalkan",
+            "mr.",
+            "ms.",
+            "tutor",
+            "teacher",
+            "guru"
+        ]
+        
+        # If evidence looks like an introduction, reject it
+        if any(pattern in evidence_lower for pattern in introduction_patterns):
+            # Exception: if the action is specifically about introductions
+            action_lower = item_content.lower()
+            if not any(word in action_lower for word in ["greet", "introduce", "perkenalkan", "salam"]):
+                print(f"      🚫 Rejected: Evidence is self-introduction, not relevant to '{item_content[:50]}...'")
+                print(f"         Evidence: '{evidence[:80]}...'")
+                return False
+        
         # If evidence is ONLY a generic phrase, reject immediately
         for phrase in invalid_phrases:
             if evidence_lower == phrase or evidence_lower == phrase + ".":
@@ -264,6 +290,51 @@ Return ONLY valid JSON:
         if word_count < 3:
             print(f"      🚫 Rejected: Evidence too short ({word_count} words)")
             return False
+        
+        # CRITICAL: Keyword-based semantic check
+        # Extract keywords from action to check evidence relevance
+        action_lower = item_content.lower()
+        
+        # Define keyword mappings for common actions
+        keyword_checks = [
+            # Age/Grade questions
+            {
+                "triggers": ["age", "umur", "usia", "grade", "kelas", "tahun"],
+                "required_in_evidence": ["umur", "usia", "tahun", "kelas", "grade", "sd", "smp", "sma", "tk"]
+            },
+            # Interests/Likes
+            {
+                "triggers": ["interest", "like", "suka", "hobi", "kesukaan", "favorite"],
+                "required_in_evidence": ["suka", "hobi", "main", "game", "olahraga", "favorit", "senang"]
+            },
+            # Concerns/Problems
+            {
+                "triggers": ["concern", "challenge", "masalah", "khawatir", "kesulitan", "tantangan"],
+                "required_in_evidence": ["khawatir", "masalah", "kesulitan", "concern", "tantangan", "susah", "kurang"]
+            },
+            # Goals
+            {
+                "triggers": ["goal", "tujuan", "harapan", "ingin", "mau"],
+                "required_in_evidence": ["tujuan", "harapan", "ingin", "mau", "supaya", "agar", "bisa", "goals"]
+            },
+            # Experience
+            {
+                "triggers": ["experience", "pengalaman", "pernah", "sudah"],
+                "required_in_evidence": ["pernah", "sudah", "pengalaman", "biasa", "sering", "belum"]
+            }
+        ]
+        
+        # Check if action matches any keyword pattern
+        for check in keyword_checks:
+            # If action contains trigger words
+            if any(trigger in action_lower for trigger in check["triggers"]):
+                # Evidence MUST contain at least one required word
+                has_required = any(word in evidence_lower for word in check["required_in_evidence"])
+                if not has_required:
+                    print(f"      🚫 Rejected: Evidence lacks semantic keywords for '{item_content[:50]}...'")
+                    print(f"         Evidence: '{evidence[:100]}...'")
+                    print(f"         Required one of: {check['required_in_evidence'][:5]}")
+                    return False
         
         # Build type-specific instructions
         if item_type == "discuss":

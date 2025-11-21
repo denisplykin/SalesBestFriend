@@ -14,7 +14,7 @@ Minimal, focused on live assistance only.
 import asyncio
 import json
 import time
-from typing import Set, Dict, Optional
+from typing import Set, Dict, Optional, List
 from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form
