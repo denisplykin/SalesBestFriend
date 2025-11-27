@@ -107,6 +107,29 @@ stage_start_time: Optional[float] = None  # Timestamp when current stage started
 debug_log: List[Dict] = []  # Stores all AI decisions for debugging
 
 
+def reset_state():
+    """Resets all global state variables for a new session."""
+    global accumulated_transcript, is_live_recording, call_start_time
+    global checklist_progress, checklist_evidence, checklist_last_check
+    global client_card_data, current_stage_id, stage_start_time, debug_log
+
+    print("🔄 Resetting application state for new session...")
+
+    is_live_recording = True
+    call_start_time = time.time()
+    stage_start_time = time.time()
+    current_stage_id = call_structure[0]['id'] if call_structure else ""
+    checklist_progress = {}
+    checklist_evidence = {}
+    checklist_last_check = {}
+    client_card_data = {}
+    accumulated_transcript = ""
+    debug_log = [] # This was the missing part
+    reset_analyzer()
+
+    print("✅ State reset complete.")
+
+
 def log_decision(decision_type: str, data: Dict):
     """Add a decision to the debug log"""
     global debug_log
@@ -200,16 +223,7 @@ async def websocket_ingest(websocket: WebSocket):
     global current_stage_id, stage_start_time
     
     # Reset state for new session
-    is_live_recording = True
-    call_start_time = time.time()
-    stage_start_time = time.time()  # Start with first stage
-    current_stage_id = call_structure[0]['id'] if call_structure else ""  # Initialize to first stage
-    checklist_progress = {}
-    checklist_evidence = {}
-    checklist_last_check = {}
-    client_card_data = {}  # Will be filled as data is extracted
-    accumulated_transcript = ""
-    reset_analyzer()
+    reset_state()
     
     await websocket.accept()
     print("🎤 /ingest connected - starting trial class session")
@@ -320,9 +334,7 @@ async def websocket_ingest(websocket: WebSocket):
                                     
                                     # Check with LLM
                                     completed, confidence, evidence, debug_info = analyzer.check_checklist_item(
-                                        item_id,
-                                        item['content'],
-                                        item['type'],
+                                        item,
                                         accumulated_transcript[-1500:]  # Last 1500 chars
                                     )
                                     
@@ -378,18 +390,22 @@ async def websocket_ingest(websocket: WebSocket):
                             if new_client_info:
                                 print(f"   ✅ Extracted {len(new_client_info)} fields:")
                                 for field_id, field_data in new_client_info.items():
-                                    field_data['extractedAt'] = datetime.utcnow().isoformat() + 'Z'
-                                    print(f"      - {field_id}: {field_data.get('value', '')[:50]}...")
-                                    client_card_data[field_id] = field_data
-                                    
-                                    # Log decision
-                                    log_decision("client_card", {
-                                        "field_id": field_id,
-                                        "field_label": field_data.get('label', field_id),
-                                        "value": field_data.get('value', ''),
-                                        "evidence": field_data.get('evidence', ''),
-                                        "confidence": field_data.get('confidence', 1.0)
-                                    })
+                                    if isinstance(field_data, dict) and 'value' in field_data:
+                                        value_text = field_data.get('value', '')
+                                        field_data['extractedAt'] = datetime.utcnow().isoformat() + 'Z'
+                                        client_card_data[field_id] = field_data
+                                        print(f"      - {field_id}: {value_text[:50]}...")
+
+                                        # Log decision
+                                        log_decision("client_card", {
+                                            "field_id": field_id,
+                                            "field_label": field_data.get('label', field_id),
+                                            "value": value_text,
+                                            "evidence": field_data.get('evidence', ''),
+                                            "confidence": field_data.get('confidence', 1.0)
+                                        })
+                                    else:
+                                        print(f"   ⚠️ Skipping malformed client_card field: {field_id}")
                             else:
                                 print(f"   ⏭️ No new client info extracted")
                             
@@ -467,11 +483,11 @@ async def websocket_ingest(websocket: WebSocket):
     except WebSocketDisconnect:
         print("🎤 /ingest disconnected")
         is_live_recording = False
-        call_start_time = None
+        # DO NOT set call_start_time to None here to avoid race conditions
     except Exception as e:
         print(f"❌ /ingest error: {e}")
         is_live_recording = False
-        call_start_time = None
+        # DO NOT set call_start_time to None here
         import traceback
         traceback.print_exc()
 
@@ -638,9 +654,7 @@ async def process_transcript(transcript: str = Form(...), language: str = Form("
         for item in stage['items']:
             if not checklist_progress.get(item['id'], False):
                 completed, conf, evidence, debug_info = analyzer.check_checklist_item(
-                    item['id'],
-                    item['content'],
-                    item['type'],
+                    item,
                     transcript
                 )
                 
@@ -699,17 +713,9 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
         print(f"   Language: {language}")
         print(f"   Real-time: {real_time}")
         
-        # Reset state for new session (like live recording)
-        is_live_recording = True
-        call_start_time = time.time()
-        stage_start_time = time.time()
-        current_stage_id = call_structure[0]['id'] if call_structure else ""
-        checklist_progress = {}
-        checklist_evidence = {}
-        client_card_data = {}  # Will be filled as data is extracted
-        accumulated_transcript = ""
-        transcription_language = language
-        reset_analyzer()
+        # Reset state for new session to prevent bugs from previous runs
+        reset_state()
+        transcription_language = language # Set language from parameter
         
         # Create audio buffer (same as live ingest)
         audio_buffer = AudioBuffer(interval_seconds=10.0)
@@ -721,6 +727,7 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
         
         # Stream audio chunks (simulating live call)
         chunk_count = 0
+        full_transcript_segments = []
         async for audio_chunk in streamer.stream_youtube_url(url, real_time=real_time):
             chunk_count += 1
             
@@ -736,14 +743,16 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
                     
                     # Transcribe (same as live ingest)
                     loop = asyncio.get_event_loop()
-                    transcript = await loop.run_in_executor(
+                    segments = await loop.run_in_executor(
                         None,
                         transcribe_audio_buffer,
                         buffer_data,
                         transcription_language
                     )
                     
-                    if transcript:
+                    if segments:
+                        full_transcript_segments.extend(segments)
+                        transcript = " ".join([s['text'] for s in segments])
                         print(f"📝 Transcript ({len(transcript)} chars):")
                         print(f"   {transcript[:200]}...")
                         
@@ -790,9 +799,7 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
                                 
                                 # Check with LLM
                                 completed, confidence, evidence, debug_info = analyzer.check_checklist_item(
-                                    item_id,
-                                    item['content'],
-                                    item['type'],
+                                    item,
                                     accumulated_transcript[-500:]  # Last 500 chars
                                 )
                                 
@@ -820,10 +827,27 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
                         )
                         
                         if new_info:
-                            for field_id, value in new_info.items():
-                                if value and not client_card_data.get(field_id):
-                                    client_card_data[field_id] = value
-                                    print(f"   ✅ {field_id}: {value[:50]}...")
+                            print(f"   ✅ Extracted {len(new_info)} fields:")
+                            for field_id, field_data in new_info.items():
+                                # Ensure field_data is a dictionary with a 'value' key
+                                if isinstance(field_data, dict) and 'value' in field_data:
+                                    value_text = field_data.get('value', '')
+                                    # Update client_card_data only if the field is new
+                                    if field_id not in client_card_data or not client_card_data.get(field_id).get('value'):
+                                        field_data['extractedAt'] = datetime.utcnow().isoformat() + 'Z'
+                                        client_card_data[field_id] = field_data
+                                        print(f"      - {field_id}: {value_text[:50]}...")
+
+                                        # Log decision
+                                        log_decision("client_card", {
+                                            "field_id": field_id,
+                                            "field_label": field_data.get('label', field_id),
+                                            "value": value_text,
+                                            "evidence": field_data.get('evidence', ''),
+                                            "confidence": field_data.get('confidence', 1.0)
+                                        })
+                                else:
+                                    print(f"   ⚠️ Skipping malformed client_card field: {field_id}")
                         
                 except Exception as e:
                     print(f"⚠️ Analysis error: {e}")
@@ -962,7 +986,8 @@ async def process_youtube(url: str = Form(...), language: str = Form("id"), real
         
         return {
             "success": True,
-            "transcriptLength": len(transcript),
+            "transcriptLength": len(accumulated_transcript),
+            "transcript_segments": full_transcript_segments,
             "currentStage": current_stage_id,
             "itemsCompleted": sum(1 for v in checklist_progress.values() if v),
             "totalItems": sum(len(stage['items']) for stage in call_structure),
